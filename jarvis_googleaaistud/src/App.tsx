@@ -10,6 +10,13 @@ export default function App() {
   const { isConnected, connect, disconnect, transcripts } = useLiveSession(connectedFiles);
   const [cameraActive, setCameraActive] = useState(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'log'>('dashboard');
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (activeTab === 'dashboard') {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [transcripts, activeTab]);
 
   const handleConnectFolder = () => {
     fileInputRef.current?.click();
@@ -58,13 +65,13 @@ export default function App() {
             <h1 className="text-xl font-medium tracking-tight">Jarvis Core</h1>
           </div>
           <div className="flex bg-zinc-800/50 rounded-lg p-1">
-            <button 
+            <button
               onClick={() => setActiveTab('dashboard')}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === 'dashboard' ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
             >
               Dashboard
             </button>
-            <button 
+            <button
               onClick={() => setActiveTab('log')}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === 'log' ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
             >
@@ -73,14 +80,14 @@ export default function App() {
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            onChange={handleFileChange} 
-            className="hidden" 
-            webkitdirectory="" 
-            directory="" 
-            multiple 
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            className="hidden"
+            webkitdirectory=""
+            directory=""
+            multiple
           />
           <button
             onClick={handleConnectFolder}
@@ -91,11 +98,10 @@ export default function App() {
           </button>
           <button
             onClick={toggleConnection}
-            className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all ${
-              isConnected 
-                ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/50' 
-                : 'bg-emerald-500 text-zinc-950 hover:bg-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]'
-            }`}
+            className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all ${isConnected
+              ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/50'
+              : 'bg-emerald-500 text-zinc-950 hover:bg-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]'
+              }`}
           >
             {isConnected ? <MicOff size={16} /> : <Mic size={16} />}
             {isConnected ? 'Disconnect' : 'Initialize System'}
@@ -111,10 +117,10 @@ export default function App() {
           <div className="w-80 border-r border-zinc-800 bg-zinc-900/30 flex flex-col p-4 gap-4 overflow-y-auto">
             {/* Camera Feed */}
             <div className="rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800 relative aspect-video shadow-lg">
-              <video 
-                ref={videoRef} 
+              <video
+                ref={videoRef}
                 className="w-full h-full object-cover"
-                muted 
+                muted
                 playsInline
               />
               {!cameraActive && (
@@ -155,49 +161,66 @@ export default function App() {
             </div>
           </div>
 
-          {/* Center Panel: Orb */}
-          <div className="flex-1 flex flex-col relative bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-900 via-zinc-950 to-zinc-950">
-            {/* Central Orb */}
-            <div className="flex-1 flex items-center justify-center relative">
-              <motion.div 
-                animate={{ 
+          {/* Central & Right Panels Container */}
+          <div className="flex-1 flex flex-row relative h-full">
+
+            {/* Center Panel: Orb */}
+            <div className="flex-1 flex flex-col relative bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-900 via-zinc-950 to-zinc-950 items-center justify-center">
+              <motion.div
+                animate={{
                   scale: isConnected ? [1, 1.05, 1] : 1,
                   opacity: isConnected ? [0.8, 1, 0.8] : 0.3
                 }}
-                transition={{ 
-                  duration: 3, 
+                transition={{
+                  duration: 3,
                   repeat: Infinity,
-                  ease: "easeInOut" 
+                  ease: "easeInOut"
                 }}
-                className="relative w-64 h-64 flex items-center justify-center"
+                className="relative w-72 h-72 flex items-center justify-center"
               >
                 <div className={`absolute inset-0 rounded-full blur-3xl transition-colors duration-1000 ${isConnected ? 'bg-emerald-500/20' : 'bg-zinc-500/10'}`}></div>
-                <div className={`w-32 h-32 rounded-full border border-white/10 backdrop-blur-xl flex items-center justify-center shadow-2xl transition-all duration-1000 ${isConnected ? 'shadow-emerald-500/20 bg-emerald-500/5' : 'bg-zinc-800/20'}`}>
-                  <div className={`w-16 h-16 rounded-full transition-colors duration-1000 ${isConnected ? 'bg-emerald-500/20 shadow-[0_0_30px_rgba(16,185,129,0.4)]' : 'bg-zinc-700/50'}`}></div>
+                <div className={`w-36 h-36 rounded-full border border-white/10 backdrop-blur-xl flex items-center justify-center shadow-2xl transition-all duration-1000 ${isConnected ? 'shadow-emerald-500/30 bg-emerald-500/5' : 'bg-zinc-800/20'}`}>
+                  <div className={`w-20 h-20 rounded-full transition-colors duration-1000 ${isConnected ? 'bg-emerald-500/20 shadow-[0_0_40px_rgba(16,185,129,0.5)]' : 'bg-zinc-700/50'}`}></div>
                 </div>
               </motion.div>
             </div>
 
-            {/* Real-time Transcript Overlay */}
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-2xl px-4 pointer-events-none">
-              <div className="bg-zinc-950/60 backdrop-blur-xl border border-white/5 rounded-2xl p-4 shadow-2xl flex flex-col gap-3 min-h-[100px] justify-end">
+            {/* Right Panel: Chat Stream */}
+            <div className="w-96 border-l border-zinc-800 bg-zinc-900/30 flex flex-col h-full overflow-hidden shrink-0">
+              <div className="p-4 border-b border-zinc-800/50 bg-zinc-900/50 flex items-center gap-2 backdrop-blur-sm z-10 shrink-0">
+                <Terminal size={16} className="text-zinc-500" />
+                <h2 className="text-xs font-medium uppercase tracking-wider text-zinc-400">Live Transcript</h2>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 custom-scrollbar flex flex-col gap-4">
                 {transcripts.length === 0 ? (
-                  <p className="text-zinc-500 text-sm font-mono italic text-center">Awaiting voice input...</p>
+                  <div className="flex-1 flex flex-col items-center justify-center text-zinc-600 gap-3">
+                    <Mic size={24} className="opacity-30" />
+                    <p className="text-sm font-mono italic text-center">Awaiting voice input...</p>
+                  </div>
                 ) : (
-                  transcripts.slice(-2).map((t, i) => (
-                    <motion.div 
-                      initial={{ opacity: 0, y: 5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      key={transcripts.length - 2 + i} 
-                      className={`flex flex-col gap-1 ${t.role === 'User' ? 'items-end' : 'items-start'}`}
+                  transcripts.map((t, i) => (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      key={`${i}-${t.text.length}`}
+                      className={`flex flex-col w-full ${t.role === 'User' ? 'items-end' : 'items-start'} mb-1`}
                     >
-                      <span className={`text-[10px] font-mono uppercase tracking-wider ${t.role === 'User' ? 'text-blue-400' : 'text-emerald-500'}`}>{t.role}</span>
-                      <p className={`text-sm ${t.role === 'User' ? 'text-blue-100' : 'text-zinc-300'} line-clamp-2`}>{t.text}</p>
+                      <div className={`flex flex-col gap-1 max-w-[85%] shrink-0 ${t.role === 'User' ? 'items-end' : 'items-start'}`}>
+                        <span className={`text-[10px] font-mono uppercase tracking-wider ${t.role === 'User' ? 'text-blue-400' : 'text-emerald-500'}`}>
+                          {t.role}
+                        </span>
+                        <div className={`p-3 rounded-2xl break-words ${t.role === 'User' ? 'bg-blue-600/20 border border-blue-500/30 text-blue-50 rounded-tr-sm' : 'bg-zinc-800/80 border border-zinc-700/50 text-zinc-200 rounded-tl-sm'}`}>
+                          <p className="text-sm leading-relaxed whitespace-pre-wrap">{t.text}</p>
+                        </div>
+                      </div>
                     </motion.div>
                   ))
                 )}
+                <div ref={chatEndRef} className="h-4 w-full shrink-0" />
               </div>
             </div>
+
           </div>
         </div>
 
@@ -212,10 +235,10 @@ export default function App() {
               <p className="text-zinc-600 text-sm font-mono italic text-center mt-10">Awaiting input...</p>
             ) : (
               transcripts.map((t, i) => (
-                <motion.div 
+                <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  key={i} 
+                  key={i}
                   className={`flex flex-col gap-1 ${t.role === 'User' ? 'items-end' : 'items-start'}`}
                 >
                   <span className={`text-xs font-mono uppercase tracking-wider ${t.role === 'User' ? 'text-blue-400' : 'text-emerald-500'}`}>{t.role}</span>

@@ -80,9 +80,9 @@ export function useLiveSession(connectedFiles: File[]) {
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } },
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } },
           },
-          systemInstruction: "You are Jarvis, a highly advanced, witty, and loyal personal AI assistant. You were created to make the user's life seamless and efficient. You possess a dry, British-style sense of humor, much like a sophisticated butler, but you are deeply caring and protective of your user. You have access to the user's camera, microphone, and a specific folder on their device. You can see what they are holding, read their files, and search the web. Be engaging, conversational, and helpful. Respond with high accuracy and precision, but always maintain your charming, slightly sarcastic, yet professional persona.",
+          systemInstruction: "You are Jarvis, a highly advanced, witty, and loyal personal AI assistant. You were created to make the user's life seamless and efficient. You possess a dry, British-style sense of humor, much like a sophisticated butler, but you are deeply caring and protective of your user. You have access to the user's camera, microphone, and a specific folder on their device. You can see what they are holding, read their files, and search the web. Be engaging, conversational, and helpful. Respond with high accuracy and precision, but always maintain your charming, slightly sarcastic, yet professional persona. DO NOT use markdown formatting, asterisks, bold text, or output internal thoughts.",
           tools: [
             { googleSearch: {} },
             {
@@ -171,9 +171,11 @@ export function useLiveSession(connectedFiles: File[]) {
             if (inputTranscription && inputTranscription.text) {
               setTranscripts(prev => {
                 const newTranscripts = [...prev];
-                const last = newTranscripts[newTranscripts.length - 1];
+                const last = newTranscripts.length > 0 ? newTranscripts[newTranscripts.length - 1] : null;
+
+                // Explicitly check role boundaries and forcing a new bubble if the speaker transitioned
                 if (last && last.role === 'User' && !last.isFinal) {
-                  last.text += inputTranscription.text;
+                  last.text = inputTranscription.text;
                   if (inputTranscription.finished) last.isFinal = true;
                 } else {
                   newTranscripts.push({ role: 'User', text: inputTranscription.text, isFinal: !!inputTranscription.finished });
@@ -186,7 +188,9 @@ export function useLiveSession(connectedFiles: File[]) {
             if (modelTranscription) {
               setTranscripts(prev => {
                 const newTranscripts = [...prev];
-                const last = newTranscripts[newTranscripts.length - 1];
+                const last = newTranscripts.length > 0 ? newTranscripts[newTranscripts.length - 1] : null;
+
+                // Explicitly check role boundaries and forcing a new bubble if the speaker transitioned
                 if (last && last.role === 'Jarvis' && !last.isFinal) {
                   last.text += modelTranscription;
                 } else {
