@@ -7,16 +7,8 @@ export default function App() {
   const [connectedFiles, setConnectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const { isConnected, connect, disconnect, transcripts } = useLiveSession(connectedFiles);
+  const { isConnected, connect, disconnect, audioVolume } = useLiveSession(connectedFiles);
   const [cameraActive, setCameraActive] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'log'>('dashboard');
-  const chatEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (activeTab === 'dashboard') {
-      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [transcripts, activeTab]);
 
   const handleConnectFolder = () => {
     fileInputRef.current?.click();
@@ -64,20 +56,6 @@ export default function App() {
             </div>
             <h1 className="text-xl font-medium tracking-tight">Jarvis Core</h1>
           </div>
-          <div className="flex bg-zinc-800/50 rounded-lg p-1">
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === 'dashboard' ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
-            >
-              Dashboard
-            </button>
-            <button
-              onClick={() => setActiveTab('log')}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === 'log' ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
-            >
-              System Log
-            </button>
-          </div>
         </div>
         <div className="flex items-center gap-4">
           <input
@@ -112,9 +90,9 @@ export default function App() {
       {/* Main Content */}
       <main className="flex-1 relative overflow-hidden">
         {/* Dashboard View */}
-        <div className={`absolute inset-0 flex transition-opacity duration-300 ${activeTab === 'dashboard' ? 'opacity-100 z-10' : 'opacity-0 pointer-events-none z-0'}`}>
+        <div className="absolute inset-0 flex transition-opacity duration-300 opacity-100 z-10">
           {/* Left Panel: Camera & Files */}
-          <div className="w-80 border-r border-zinc-800 bg-zinc-900/30 flex flex-col p-4 gap-4 overflow-y-auto">
+          <div className="w-[340px] border-r border-zinc-800 bg-zinc-900/30 flex flex-col p-4 gap-4 overflow-y-auto">
             {/* Camera Feed */}
             <div className="rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800 relative aspect-video shadow-lg">
               <video
@@ -168,13 +146,14 @@ export default function App() {
             <div className="flex-1 flex flex-col relative bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-900 via-zinc-950 to-zinc-950 items-center justify-center">
               <motion.div
                 animate={{
-                  scale: isConnected ? [1, 1.05, 1] : 1,
-                  opacity: isConnected ? [0.8, 1, 0.8] : 0.3
+                  scale: isConnected ? 1 + audioVolume * 0.4 : 1, // Pulse dynamically to voice. Max scale 1.4 when loud.
+                  opacity: isConnected ? Math.max(0.8, audioVolume) : 0.3
                 }}
                 transition={{
-                  duration: 3,
-                  repeat: Infinity,
-                  ease: "easeInOut"
+                  type: "spring",
+                  stiffness: 300,
+                  damping: 15,
+                  mass: 0.5
                 }}
                 className="relative w-72 h-72 flex items-center justify-center"
               >
@@ -185,69 +164,6 @@ export default function App() {
               </motion.div>
             </div>
 
-            {/* Right Panel: Chat Stream */}
-            <div className="w-96 border-l border-zinc-800 bg-zinc-900/30 flex flex-col h-full overflow-hidden shrink-0">
-              <div className="p-4 border-b border-zinc-800/50 bg-zinc-900/50 flex items-center gap-2 backdrop-blur-sm z-10 shrink-0">
-                <Terminal size={16} className="text-zinc-500" />
-                <h2 className="text-xs font-medium uppercase tracking-wider text-zinc-400">Live Transcript</h2>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-4 custom-scrollbar flex flex-col gap-4">
-                {transcripts.length === 0 ? (
-                  <div className="flex-1 flex flex-col items-center justify-center text-zinc-600 gap-3">
-                    <Mic size={24} className="opacity-30" />
-                    <p className="text-sm font-mono italic text-center">Awaiting voice input...</p>
-                  </div>
-                ) : (
-                  transcripts.map((t, i) => (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      key={`${i}-${t.text.length}`}
-                      className={`flex flex-col w-full ${t.role === 'User' ? 'items-end' : 'items-start'} mb-1`}
-                    >
-                      <div className={`flex flex-col gap-1 max-w-[85%] shrink-0 ${t.role === 'User' ? 'items-end' : 'items-start'}`}>
-                        <span className={`text-[10px] font-mono uppercase tracking-wider ${t.role === 'User' ? 'text-blue-400' : 'text-emerald-500'}`}>
-                          {t.role}
-                        </span>
-                        <div className={`p-3 rounded-2xl break-words ${t.role === 'User' ? 'bg-blue-600/20 border border-blue-500/30 text-blue-50 rounded-tr-sm' : 'bg-zinc-800/80 border border-zinc-700/50 text-zinc-200 rounded-tl-sm'}`}>
-                          <p className="text-sm leading-relaxed whitespace-pre-wrap">{t.text}</p>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))
-                )}
-                <div ref={chatEndRef} className="h-4 w-full shrink-0" />
-              </div>
-            </div>
-
-          </div>
-        </div>
-
-        {/* System Log View */}
-        <div className={`absolute inset-0 flex flex-col bg-zinc-950 p-6 overflow-y-auto transition-opacity duration-300 custom-scrollbar ${activeTab === 'log' ? 'opacity-100 z-10' : 'opacity-0 pointer-events-none z-0'}`}>
-          <div className="max-w-4xl mx-auto w-full flex flex-col gap-6 pb-20">
-            <div className="flex items-center gap-2 text-zinc-500 mb-4 border-b border-zinc-800 pb-4 sticky top-0 bg-zinc-950/90 backdrop-blur-md z-10 pt-2">
-              <Terminal size={18} />
-              <h2 className="text-sm font-mono uppercase tracking-wider">Communication Log</h2>
-            </div>
-            {transcripts.length === 0 ? (
-              <p className="text-zinc-600 text-sm font-mono italic text-center mt-10">Awaiting input...</p>
-            ) : (
-              transcripts.map((t, i) => (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  key={i}
-                  className={`flex flex-col gap-1 ${t.role === 'User' ? 'items-end' : 'items-start'}`}
-                >
-                  <span className={`text-xs font-mono uppercase tracking-wider ${t.role === 'User' ? 'text-blue-400' : 'text-emerald-500'}`}>{t.role}</span>
-                  <div className={`p-4 rounded-2xl max-w-[80%] ${t.role === 'User' ? 'bg-blue-500/10 border border-blue-500/20 text-blue-50' : 'bg-zinc-900 border border-zinc-800 text-zinc-300'}`}>
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{t.text}</p>
-                  </div>
-                </motion.div>
-              ))
-            )}
           </div>
         </div>
       </main>

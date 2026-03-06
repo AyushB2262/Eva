@@ -4,7 +4,7 @@ export class AudioRecorder {
   private processor: ScriptProcessorNode | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
 
-  async start(onData: (base64: string) => void) {
+  async start(onData: (base64: string) => void, onVolumeChange?: (volume: number) => void) {
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       this.audioContext = new AudioContext({ sampleRate: 16000 });
@@ -14,9 +14,18 @@ export class AudioRecorder {
       this.processor.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0);
         const pcm16 = new Int16Array(inputData.length);
+        let sum = 0;
         for (let i = 0; i < inputData.length; i++) {
           let s = Math.max(-1, Math.min(1, inputData[i]));
           pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+          sum += s * s;
+        }
+
+        if (onVolumeChange) {
+          const rms = Math.sqrt(sum / inputData.length);
+          // Scale RMS linearly and cap it at 1 for visual mappings
+          const mappedVolume = Math.min(rms * 10, 1);
+          onVolumeChange(mappedVolume);
         }
         const buffer = new Uint8Array(pcm16.buffer);
         let binary = '';

@@ -4,7 +4,7 @@ import { AudioRecorder, AudioPlayer } from '../utils/audio';
 
 export function useLiveSession(connectedFiles: File[]) {
   const [isConnected, setIsConnected] = useState(false);
-  const [transcripts, setTranscripts] = useState<{ role: string; text: string; isFinal?: boolean }[]>([]);
+  const [audioVolume, setAudioVolume] = useState(0);
   const sessionRef = useRef<any>(null);
   const audioRecorderRef = useRef<AudioRecorder | null>(null);
   const audioPlayerRef = useRef<AudioPlayer | null>(null);
@@ -126,6 +126,8 @@ export function useLiveSession(connectedFiles: File[]) {
                   media: { data: base64, mimeType: 'audio/pcm;rate=16000' }
                 });
               });
+            }, (volume: number) => {
+              setAudioVolume(volume);
             });
 
             // Start video streaming
@@ -165,51 +167,6 @@ export function useLiveSession(connectedFiles: File[]) {
             if (toolCall) {
               await handleToolCall(toolCall, sessionRef.current);
             }
-
-            // Handle transcriptions
-            const inputTranscription = message.serverContent?.inputTranscription;
-            if (inputTranscription && inputTranscription.text) {
-              setTranscripts(prev => {
-                const newTranscripts = [...prev];
-                const last = newTranscripts.length > 0 ? newTranscripts[newTranscripts.length - 1] : null;
-
-                // Explicitly check role boundaries and forcing a new bubble if the speaker transitioned
-                if (last && last.role === 'User' && !last.isFinal) {
-                  last.text = inputTranscription.text;
-                  if (inputTranscription.finished) last.isFinal = true;
-                } else {
-                  newTranscripts.push({ role: 'User', text: inputTranscription.text, isFinal: !!inputTranscription.finished });
-                }
-                return newTranscripts;
-              });
-            }
-
-            const modelTranscription = message.serverContent?.modelTurn?.parts[0]?.text;
-            if (modelTranscription) {
-              setTranscripts(prev => {
-                const newTranscripts = [...prev];
-                const last = newTranscripts.length > 0 ? newTranscripts[newTranscripts.length - 1] : null;
-
-                // Explicitly check role boundaries and forcing a new bubble if the speaker transitioned
-                if (last && last.role === 'Jarvis' && !last.isFinal) {
-                  last.text += modelTranscription;
-                } else {
-                  newTranscripts.push({ role: 'Jarvis', text: modelTranscription, isFinal: false });
-                }
-                return newTranscripts;
-              });
-            }
-
-            if (message.serverContent?.turnComplete) {
-              setTranscripts(prev => {
-                const newTranscripts = [...prev];
-                const last = newTranscripts[newTranscripts.length - 1];
-                if (last && last.role === 'Jarvis') {
-                  last.isFinal = true;
-                }
-                return newTranscripts;
-              });
-            }
           },
           onerror: (error) => {
             console.error("Live API Error:", error);
@@ -240,6 +197,7 @@ export function useLiveSession(connectedFiles: File[]) {
       sessionRef.current.close();
       sessionRef.current = null;
     }
+    setAudioVolume(0);
   }, []);
 
   useEffect(() => {
@@ -248,5 +206,5 @@ export function useLiveSession(connectedFiles: File[]) {
     };
   }, [disconnect]);
 
-  return { isConnected, connect, disconnect, transcripts };
+  return { isConnected, connect, disconnect, audioVolume };
 }
