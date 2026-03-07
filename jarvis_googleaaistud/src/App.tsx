@@ -1,25 +1,86 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Folder, Video, VideoOff, Terminal } from 'lucide-react';
+import { Mic, MicOff, Folder, Video, VideoOff, Terminal, MonitorSmartphone, XSquare } from 'lucide-react';
 import { useLiveSession } from './hooks/useLiveSession';
 import { motion } from 'motion/react';
 import { SignedIn, SignedOut, UserButton } from '@clerk/clerk-react';
 import Login from './components/Login';
+import Avatar3D from './components/Avatar3D';
 
 export default function App() {
   const [connectedFiles, setConnectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const { isConnected, connect, disconnect, audioVolume } = useLiveSession(connectedFiles);
+  const screenVideoRef = useRef<HTMLVideoElement>(null);
+  const { isConnected, connect, disconnect, audioVolume } = useLiveSession(connectedFiles, screenVideoRef);
   const [cameraActive, setCameraActive] = useState(false);
+  const [screenActive, setScreenActive] = useState(false);
+  const handleConnectFolder = async () => {
+    try {
+      // @ts-ignore - showDirectoryPicker is potentially not typed standardly everywhere
+      const dirHandle = await window.showDirectoryPicker({
+        mode: 'readwrite'
+      });
 
-  const handleConnectFolder = () => {
-    fileInputRef.current?.click();
+      const allFiles: File[] = [];
+
+      async function getFilesRecursively(entry: any, path: string = '') {
+        if (entry.kind === 'file') {
+          const file = await entry.getFile();
+          // Polyfill webkitRelativePath for our existing code
+          Object.defineProperty(file, 'webkitRelativePath', {
+            value: path + file.name,
+            writable: false
+          });
+          // Also store the handle on the file object for later writing/moving
+          (file as any).handle = entry;
+          allFiles.push(file);
+        } else if (entry.kind === 'directory') {
+          for await (const handle of entry.values()) {
+            await getFilesRecursively(handle, path + entry.name + '/');
+          }
+        }
+      }
+
+      await getFilesRecursively(dirHandle);
+
+      // Store the root handle globally so we can use it to create new files later
+      (window as any).__evaDirectoryHandle = dirHandle;
+
+      setConnectedFiles(allFiles);
+    } catch (err) {
+      console.error("Failed to connect folder:", err);
+      // User likely cancelled the prompt
+    }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const filesArray = Array.from(e.target.files);
-      setConnectedFiles(filesArray);
+  const toggleScreenShare = async () => {
+    if (screenActive) {
+      if (screenVideoRef.current && screenVideoRef.current.srcObject) {
+        const stream = screenVideoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach(track => track.stop());
+        screenVideoRef.current.srcObject = null;
+      }
+      setScreenActive(false);
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        if (screenVideoRef.current) {
+          screenVideoRef.current.srcObject = stream;
+          screenVideoRef.current.play();
+        }
+        setScreenActive(true);
+
+        // Listen for user stopping screen share from browser built-in UI
+        stream.getVideoTracks()[0].onended = () => {
+          setScreenActive(false);
+          if (screenVideoRef.current) screenVideoRef.current.srcObject = null;
+        };
+
+        // We also need to connect this to the Live API session. 
+        // For MVP, we pass it down to useLiveSession, or we can just handle it similarly to webcam.
+      } catch (err) {
+        console.error("Failed to share screen:", err);
+      }
     }
   };
 
@@ -64,15 +125,14 @@ export default function App() {
               </div>
             </div>
             <div className="flex items-center gap-4">
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileChange}
-                className="hidden"
-                webkitdirectory=""
-                directory=""
-                multiple
-              />
+              <button
+                onClick={toggleScreenShare}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${screenActive ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/50' : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+                  }`}
+              >
+                {screenActive ? <XSquare size={16} /> : <MonitorSmartphone size={16} />}
+                {screenActive ? 'Stop Sharing' : 'Share Screen'}
+              </button>
               <button
                 onClick={handleConnectFolder}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition-colors text-sm font-medium"
@@ -130,6 +190,22 @@ export default function App() {
                   )}
                 </div>
 
+                {/* Screen Share Feed (Conditional) */}
+                {screenActive && (
+                  <div className="rounded-xl overflow-hidden bg-zinc-900 border border-indigo-500/30 relative aspect-video shadow-lg animate-in fade-in slide-in-from-top-4">
+                    <video
+                      ref={screenVideoRef}
+                      className="w-full h-full object-contain bg-black"
+                      muted
+                      playsInline
+                    />
+                    <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-indigo-500/20 backdrop-blur-md px-2 py-1 rounded-md border border-indigo-500/30">
+                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></div>
+                      <span className="text-[10px] font-mono text-indigo-400 uppercase tracking-wider">Screen</span>
+                    </div>
+                  </div>
+                )}
+
                 {/* File Explorer */}
                 <div className="flex-1 rounded-xl bg-zinc-900 border border-zinc-800 p-4 flex flex-col shadow-lg">
                   <div className="flex items-center gap-2 mb-4 text-zinc-400">
@@ -158,25 +234,8 @@ export default function App() {
               <div className="flex-1 flex flex-row relative h-full">
 
                 {/* Center Panel: Orb */}
-                <div className="flex-1 flex flex-col relative bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-900 via-zinc-950 to-zinc-950 items-center justify-center">
-                  <motion.div
-                    animate={{
-                      scale: isConnected ? 1 + audioVolume * 0.4 : 1, // Pulse dynamically to voice. Max scale 1.4 when loud.
-                      opacity: isConnected ? Math.max(0.8, audioVolume) : 0.3
-                    }}
-                    transition={{
-                      type: "spring",
-                      stiffness: 300,
-                      damping: 15,
-                      mass: 0.5
-                    }}
-                    className="relative w-72 h-72 flex items-center justify-center"
-                  >
-                    <div className={`absolute inset-0 rounded-full blur-3xl transition-colors duration-1000 ${isConnected ? 'bg-emerald-500/20' : 'bg-zinc-500/10'}`}></div>
-                    <div className={`w-36 h-36 rounded-full border border-white/10 backdrop-blur-xl flex items-center justify-center shadow-2xl transition-all duration-1000 ${isConnected ? 'shadow-emerald-500/30 bg-emerald-500/5' : 'bg-zinc-800/20'}`}>
-                      <div className={`w-20 h-20 rounded-full transition-colors duration-1000 ${isConnected ? 'bg-emerald-500/20 shadow-[0_0_40px_rgba(16,185,129,0.5)]' : 'bg-zinc-700/50'}`}></div>
-                    </div>
-                  </motion.div>
+                <div className="flex-1 flex flex-col relative bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-900 via-zinc-950 to-zinc-950 items-center justify-center overflow-hidden">
+                  <Avatar3D volume={audioVolume} isConnected={isConnected} />
                 </div>
 
               </div>
