@@ -1,7 +1,7 @@
 export class AudioRecorder {
   private stream: MediaStream | null = null;
   private audioContext: AudioContext | null = null;
-  private processor: ScriptProcessorNode | null = null;
+  private workletNode: AudioWorkletNode | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
 
   async start(onData: (base64: string) => void, onVolumeChange?: (volume: number) => void) {
@@ -9,43 +9,87 @@ export class AudioRecorder {
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       this.audioContext = new AudioContext({ sampleRate: 16000 });
       this.source = this.audioContext.createMediaStreamSource(this.stream);
-      this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
 
-      this.processor.onaudioprocess = (e) => {
-        const inputData = e.inputBuffer.getChannelData(0);
-        const pcm16 = new Int16Array(inputData.length);
-        let sum = 0;
-        for (let i = 0; i < inputData.length; i++) {
-          let s = Math.max(-1, Math.min(1, inputData[i]));
-          pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-          sum += s * s;
+      // Create AudioWorklet inline
+      const workletCode = `
+        class RecorderProcessor extends AudioWorkletProcessor {
+          constructor() {
+            super();
+            this.bufferSize = 4096;
+            this.buffer = new Float32Array(this.bufferSize);
+            this.bytesWritten = 0;
+          }
+
+          process(inputs, outputs, parameters) {
+            const input = inputs[0];
+            if (!input || !input.length) return true;
+            const channel = input[0];
+
+            for (let i = 0; i < channel.length; i++) {
+              this.buffer[this.bytesWritten++] = channel[i];
+
+              if (this.bytesWritten >= this.bufferSize) {
+                // Buffer full, process and send
+                const pcm16 = new Int16Array(this.bufferSize);
+                let sum = 0;
+                
+                for (let j = 0; j < this.bufferSize; j++) {
+                  let s = Math.max(-1, Math.min(1, this.buffer[j]));
+                  pcm16[j] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                  sum += s * s;
+                }
+
+                const rms = Math.sqrt(sum / this.bufferSize);
+
+                // Transfer the buffer instead of base64 encoding it here
+                // btoa is not available in the AudioWorkletGlobalScope
+                this.port.postMessage({ buffer: pcm16.buffer, rms }, [pcm16.buffer]);
+                this.bytesWritten = 0;
+              }
+            }
+            return true;
+          }
         }
+        registerProcessor('recorder-worklet', RecorderProcessor);
+      `;
+      const blob = new Blob([workletCode], { type: 'application/javascript' });
+      const workletUrl = URL.createObjectURL(blob);
 
+      await this.audioContext.audioWorklet.addModule(workletUrl);
+      this.workletNode = new AudioWorkletNode(this.audioContext, 'recorder-worklet');
+
+      this.workletNode.port.onmessage = (event) => {
+        const { buffer, rms } = event.data;
         if (onVolumeChange) {
-          const rms = Math.sqrt(sum / inputData.length);
-          // Scale RMS linearly and cap it at 1 for visual mappings
           const mappedVolume = Math.min(rms * 10, 1);
           onVolumeChange(mappedVolume);
         }
-        const buffer = new Uint8Array(pcm16.buffer);
+
+        // Base64 encode the ArrayBuffer on the main thread
+        const uint8 = new Uint8Array(buffer);
         let binary = '';
-        for (let i = 0; i < buffer.byteLength; i++) {
-          binary += String.fromCharCode(buffer[i]);
+        for (let j = 0; j < uint8.byteLength; j++) {
+          binary += String.fromCharCode(uint8[j]);
         }
-        onData(btoa(binary));
+        const base64Data = btoa(binary);
+
+        onData(base64Data);
       };
 
-      this.source.connect(this.processor);
-      this.processor.connect(this.audioContext.destination);
+      this.source.connect(this.workletNode);
+      this.workletNode.connect(this.audioContext.destination);
+
+      URL.revokeObjectURL(workletUrl);
+
     } catch (err) {
       console.error("Failed to start audio recorder:", err);
     }
   }
 
   stop() {
-    if (this.processor) {
-      this.processor.disconnect();
-      this.processor = null;
+    if (this.workletNode) {
+      this.workletNode.disconnect();
+      this.workletNode = null;
     }
     if (this.source) {
       this.source.disconnect();

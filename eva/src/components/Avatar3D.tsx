@@ -19,6 +19,8 @@ function ReactiveCore({ volume, isConnected }: Avatar3DProps) {
     const targetSpeed = isConnected ? Math.max(1, volume * 5) : 0.5;
 
     useFrame((state, delta) => {
+        if (!isConnected || volume < 0.05) return; // Throttle math when idle
+
         if (meshRef.current) {
             // Lerp scale for smooth juiciness
             meshRef.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.1);

@@ -208,28 +208,35 @@ export function useLiveSession(connectedFiles: File[], screenVideoRef: RefObject
               setAudioVolume(volume);
             });
 
-            // Start video streaming
-            videoIntervalRef.current = window.setInterval(() => {
+            // Start video streaming via worker
+            const workerUrl = new URL('../utils/frameWorker.ts', import.meta.url);
+            const frameWorker = new Worker(workerUrl, { type: 'module' });
+
+            frameWorker.onmessage = (e) => {
+              if (e.data.base64Data && sessionPromise) {
+                sessionPromise.then(session => {
+                  session.sendRealtimeInput({
+                    media: { data: e.data.base64Data, mimeType: 'image/jpeg' }
+                  });
+                });
+              }
+            };
+
+            videoIntervalRef.current = window.setInterval(async () => {
               const video = videoRef.current;
-              const canvas = canvasRef.current;
-              
+
               // Check if screen stream is active. If so, DO NOT SEND WEBCAM.
               const screenVid = screenVideoRef?.current;
               const isScreenSharing = screenVid && screenVid.readyState >= 2 && screenVid.srcObject;
               if (isScreenSharing) return;
 
-              if (video && canvas && video.readyState >= 2) {
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                const ctx = canvas.getContext('2d');
-                if (ctx) {
-                  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                  const base64Data = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
-                  sessionPromise.then(session => {
-                    session.sendRealtimeInput({
-                      media: { data: base64Data, mimeType: 'image/jpeg' }
-                    });
-                  });
+              if (video && video.readyState >= 2) {
+                try {
+                  // Transfer ownership to worker via createImageBitmap
+                  const bitmap = await createImageBitmap(video);
+                  frameWorker.postMessage({ bitmap, type: 'webcam' }, [bitmap]);
+                } catch (e) {
+                  console.error("Failed to capture webcam frame via worker", e);
                 }
               }
             }, 1000); // 1 frame per second
@@ -237,50 +244,32 @@ export function useLiveSession(connectedFiles: File[], screenVideoRef: RefObject
             // Watch for screen share dynamically
             screenIntervalRef.current = window.setInterval(async () => {
               const screenVid = screenVideoRef?.current;
-              const scanvas = screenCanvasRef.current;
               // Check if screen stream is active by checking readyState and srcObject
-              if (screenVid && scanvas && screenVid.readyState >= 2 && screenVid.srcObject) {
+              if (screenVid && screenVid.readyState >= 2 && screenVid.srcObject) {
                 const stream = screenVid.srcObject as MediaStream;
                 const track = stream.getVideoTracks()[0];
-                let frameCaptured = false;
+                let bitmap: ImageBitmap | null = null;
 
                 if (track && 'ImageCapture' in window) {
-                   try {
-                     const imageCapture = new (window as any).ImageCapture(track);
-                     const bitmap = await imageCapture.grabFrame();
-                     scanvas.width = bitmap.width;
-                     scanvas.height = bitmap.height;
-                     const ctx = scanvas.getContext('2d');
-                     if (ctx) {
-                       ctx.drawImage(bitmap, 0, 0, scanvas.width, scanvas.height);
-                       const base64Data = scanvas.toDataURL('image/jpeg', 0.5).split(',')[1];
-                       sessionPromise.then(session => {
-                         session.sendRealtimeInput({
-                           media: { data: base64Data, mimeType: 'image/jpeg' }
-                         });
-                       });
-                       frameCaptured = true;
-                     }
-                   } catch (e) {
-                      // Fallback below
-                   }
+                  try {
+                    const imageCapture = new (window as any).ImageCapture(track);
+                    bitmap = await imageCapture.grabFrame();
+                  } catch (e) {
+                    // Fallback below
+                  }
                 }
 
-                if (!frameCaptured) {
+                if (!bitmap) {
                   // Fallback for browsers that don't support ImageCapture
-                  scanvas.width = screenVid.videoWidth;
-                  scanvas.height = screenVid.videoHeight;
-                  const ctx = scanvas.getContext('2d');
-                  if (ctx) {
-                    ctx.drawImage(screenVid, 0, 0, scanvas.width, scanvas.height);
-                    const base64Data = scanvas.toDataURL('image/jpeg', 0.5).split(',')[1];
-                    // Send as image part
-                    sessionPromise.then(session => {
-                      session.sendRealtimeInput({
-                        media: { data: base64Data, mimeType: 'image/jpeg' }
-                      });
-                    });
+                  try {
+                    bitmap = await createImageBitmap(screenVid);
+                  } catch (e) {
+                    console.error("Failed to capture screen frame via worker", e);
                   }
+                }
+
+                if (bitmap) {
+                  frameWorker.postMessage({ bitmap, type: 'screen' }, [bitmap]);
                 }
               }
             }, 1000);
