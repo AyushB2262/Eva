@@ -15,6 +15,11 @@ export function useLiveSession(connectedFiles: File[], screenVideoRef: RefObject
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const screenCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const connectedFilesRef = useRef<File[]>(connectedFiles);
+
+  useEffect(() => {
+    connectedFilesRef.current = connectedFiles;
+  }, [connectedFiles]);
 
   const connect = useCallback(async (videoElement: HTMLVideoElement) => {
     if (isConnected) return;
@@ -32,22 +37,24 @@ export function useLiveSession(connectedFiles: File[], screenVideoRef: RefObject
         let result: any = { error: "Unknown function" };
 
         if (name === 'listFiles') {
-          if (connectedFiles.length === 0) {
+          const currentFiles = connectedFilesRef.current;
+          if (currentFiles.length === 0) {
             result = { error: "No files connected. Ask the user to connect a folder first." };
           } else {
             try {
-              const files = connectedFiles.map(f => ({ name: f.webkitRelativePath || f.name, kind: 'file' }));
+              const files = currentFiles.map(f => ({ name: f.webkitRelativePath || f.name, kind: 'file' }));
               result = { files };
             } catch (err: any) {
               result = { error: err.message };
             }
           }
         } else if (name === 'readFile') {
-          if (connectedFiles.length === 0) {
+          const currentFiles = connectedFilesRef.current;
+          if (currentFiles.length === 0) {
             result = { error: "No files connected. Ask the user to connect a folder first." };
           } else {
             try {
-              const fileDef = connectedFiles.find(f => (f.webkitRelativePath || f.name) === args.filename || f.name === args.filename);
+              const fileDef = currentFiles.find(f => (f.webkitRelativePath || f.name) === args.filename || f.name === args.filename);
               if (!fileDef) {
                 result = { error: `File '${args.filename}' not found.` };
               } else {
@@ -277,7 +284,7 @@ export function useLiveSession(connectedFiles: File[], screenVideoRef: RefObject
       console.error("Failed to connect to Live API:", err);
       disconnect();
     }
-  }, [isConnected, connectedFiles]);
+  }, [isConnected]);
 
   const disconnect = useCallback(() => {
     setIsConnected(false);

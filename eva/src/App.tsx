@@ -121,7 +121,7 @@ export default function App() {
                 <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center border border-emerald-500/50">
                   <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
                 </div>
-                <h1 className="text-xl font-medium tracking-tight">Jarvis Core</h1>
+                <h1 className="text-xl font-medium tracking-tight">Eva Core</h1>
               </div>
             </div>
             <div className="flex items-center gap-4">
@@ -190,21 +190,19 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Screen Share Feed (Conditional) */}
-                {screenActive && (
-                  <div className="rounded-xl overflow-hidden bg-zinc-900 border border-indigo-500/30 relative aspect-video shadow-lg animate-in fade-in slide-in-from-top-4">
-                    <video
-                      ref={screenVideoRef}
-                      className="w-full h-full object-contain bg-black"
-                      muted
-                      playsInline
-                    />
-                    <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-indigo-500/20 backdrop-blur-md px-2 py-1 rounded-md border border-indigo-500/30">
-                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></div>
-                      <span className="text-[10px] font-mono text-indigo-400 uppercase tracking-wider">Screen</span>
-                    </div>
+                {/* Screen Share Feed */}
+                <div className={`rounded-xl overflow-hidden bg-zinc-900 border border-indigo-500/30 relative aspect-video shadow-lg animate-in fade-in slide-in-from-top-4 ${!screenActive ? 'hidden' : ''}`}>
+                  <video
+                    ref={screenVideoRef}
+                    className="w-full h-full object-contain bg-black"
+                    muted
+                    playsInline
+                  />
+                  <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-indigo-500/20 backdrop-blur-md px-2 py-1 rounded-md border border-indigo-500/30">
+                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></div>
+                    <span className="text-[10px] font-mono text-indigo-400 uppercase tracking-wider">Screen</span>
                   </div>
-                )}
+                </div>
 
                 {/* File Explorer */}
                 <div className="flex-1 rounded-xl bg-zinc-900 border border-zinc-800 p-4 flex flex-col shadow-lg">

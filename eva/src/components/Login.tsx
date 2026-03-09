@@ -8,7 +8,7 @@ export default function Login() {
                     <div className="w-12 h-12 rounded-full bg-emerald-500/20 flex items-center justify-center border border-emerald-500/50 mb-4 shadow-[0_0_15px_rgba(16,185,129,0.2)]">
                         <div className="w-4 h-4 rounded-full bg-emerald-500 animate-pulse"></div>
                     </div>
-                    <h2 className="text-2xl font-bold tracking-tight text-white mb-2">Welcome to Jarvis</h2>
+                    <h2 className="text-2xl font-bold tracking-tight text-white mb-2">Welcome to Eva</h2>
                     <p className="text-zinc-400 text-sm">Please sign in to access the core interface.</p>
                 </div>
 

@@ -1,5 +1,5 @@
 {
-  "name": "Jarvis Web AI",
+  "name": "Eva Web AI",
   "description": "A personal AI assistant with voice, vision, and file access capabilities.",
   "requestFramePermissions": ["camera", "microphone"]
 }
