@@ -4,7 +4,11 @@ import { AudioRecorder, AudioPlayer } from '../utils/audio';
 import { rememberFact, recallFact } from '../utils/memory';
 import { executeJavaScript } from '../utils/codeExecutor';
 
-export function useLiveSession(connectedFiles: File[], screenVideoRef: RefObject<HTMLVideoElement | null>) {
+export function useLiveSession(
+  connectedFiles: File[],
+  screenVideoRef: RefObject<HTMLVideoElement | null>,
+  cameraEnabled: boolean = true
+) {
   const [isConnected, setIsConnected] = useState(false);
   const [audioVolume, setAudioVolume] = useState(0);
   const sessionRef = useRef<any>(null);
@@ -16,10 +20,15 @@ export function useLiveSession(connectedFiles: File[], screenVideoRef: RefObject
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const screenCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const connectedFilesRef = useRef<File[]>(connectedFiles);
+  const cameraEnabledRef = useRef<boolean>(cameraEnabled);
 
   useEffect(() => {
     connectedFilesRef.current = connectedFiles;
   }, [connectedFiles]);
+
+  useEffect(() => {
+    cameraEnabledRef.current = cameraEnabled;
+  }, [cameraEnabled]);
 
   const connect = useCallback(async (videoElement: HTMLVideoElement) => {
     if (isConnected) return;
@@ -229,6 +238,9 @@ export function useLiveSession(connectedFiles: File[], screenVideoRef: RefObject
               const screenVid = screenVideoRef?.current;
               const isScreenSharing = screenVid && screenVid.readyState >= 2 && screenVid.srcObject;
               if (isScreenSharing) return;
+
+              // Check if camera is manually disabled by the user
+              if (!cameraEnabledRef.current) return;
 
               if (video && video.readyState >= 2) {
                 try {

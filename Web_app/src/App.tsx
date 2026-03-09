@@ -11,7 +11,8 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const screenVideoRef = useRef<HTMLVideoElement>(null);
-  const { isConnected, connect, disconnect, audioVolume } = useLiveSession(connectedFiles, screenVideoRef);
+  const [cameraEnabled, setCameraEnabled] = useState(true);
+  const { isConnected, connect, disconnect, audioVolume } = useLiveSession(connectedFiles, screenVideoRef, cameraEnabled);
   const [cameraActive, setCameraActive] = useState(false);
   const [screenActive, setScreenActive] = useState(false);
   const handleConnectFolder = async () => {
@@ -174,10 +175,10 @@ export default function App() {
               {/* Left Panel: Camera & Files */}
               <div className="w-[340px] border-r border-zinc-800 bg-zinc-900/30 flex flex-col p-4 gap-4 overflow-y-auto">
                 {/* Camera Feed */}
-                <div className="rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800 relative aspect-video shadow-lg">
+                <div className="rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800 relative aspect-video shadow-lg group">
                   <video
                     ref={videoRef}
-                    className="w-full h-full object-cover"
+                    className={`w-full h-full object-cover transition-opacity duration-300 ${!cameraEnabled ? 'opacity-0' : 'opacity-100'}`}
                     muted
                     playsInline
                   />
@@ -187,11 +188,31 @@ export default function App() {
                       <span className="text-xs font-medium uppercase tracking-wider">Camera Offline</span>
                     </div>
                   )}
-                  {cameraActive && (
+                  {cameraActive && !cameraEnabled && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-500 gap-2">
+                      <VideoOff size={24} />
+                      <span className="text-xs font-medium uppercase tracking-wider">Camera Paused</span>
+                    </div>
+                  )}
+                  {cameraActive && cameraEnabled && (
                     <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-black/50 backdrop-blur-md px-2 py-1 rounded-md border border-white/10">
                       <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
                       <span className="text-[10px] font-mono text-emerald-500 uppercase tracking-wider">Live</span>
                     </div>
+                  )}
+
+                  {/* Camera Toggle Button (Only show when connected) */}
+                  {isConnected && (
+                    <button
+                      onClick={() => setCameraEnabled(!cameraEnabled)}
+                      className={`absolute bottom-2 right-2 p-2 rounded-lg backdrop-blur-md border transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 ${cameraEnabled
+                        ? 'bg-zinc-900/60 border-white/10 text-zinc-300 hover:bg-zinc-800/80 hover:text-white'
+                        : 'bg-red-500/20 border-red-500/50 text-red-400 hover:bg-red-500/30 hover:text-red-300'
+                        }`}
+                      title={cameraEnabled ? "Pause Camera" : "Resume Camera"}
+                    >
+                      {cameraEnabled ? <Video size={16} /> : <VideoOff size={16} />}
+                    </button>
                   )}
                 </div>
 
