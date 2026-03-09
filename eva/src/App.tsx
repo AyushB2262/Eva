@@ -23,8 +23,11 @@ export default function App() {
 
       const allFiles: File[] = [];
 
+      const ignoreDirs = ['.git', 'node_modules', 'dist', 'build', '.next'];
+
       async function getFilesRecursively(entry: any, path: string = '') {
         if (entry.kind === 'file') {
+          if (entry.name.startsWith('.DS_Store')) return;
           const file = await entry.getFile();
           // Polyfill webkitRelativePath for our existing code
           Object.defineProperty(file, 'webkitRelativePath', {
@@ -35,6 +38,8 @@ export default function App() {
           (file as any).handle = entry;
           allFiles.push(file);
         } else if (entry.kind === 'directory') {
+          if (ignoreDirs.includes(entry.name)) return;
+
           for await (const handle of entry.values()) {
             await getFilesRecursively(handle, path + entry.name + '/');
           }

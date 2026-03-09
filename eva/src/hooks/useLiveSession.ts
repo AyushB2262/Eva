@@ -212,6 +212,12 @@ export function useLiveSession(connectedFiles: File[], screenVideoRef: RefObject
             videoIntervalRef.current = window.setInterval(() => {
               const video = videoRef.current;
               const canvas = canvasRef.current;
+              
+              // Check if screen stream is active. If so, DO NOT SEND WEBCAM.
+              const screenVid = screenVideoRef?.current;
+              const isScreenSharing = screenVid && screenVid.readyState >= 2 && screenVid.srcObject;
+              if (isScreenSharing) return;
+
               if (video && canvas && video.readyState >= 2) {
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
@@ -229,23 +235,52 @@ export function useLiveSession(connectedFiles: File[], screenVideoRef: RefObject
             }, 1000); // 1 frame per second
 
             // Watch for screen share dynamically
-            screenIntervalRef.current = window.setInterval(() => {
+            screenIntervalRef.current = window.setInterval(async () => {
               const screenVid = screenVideoRef?.current;
               const scanvas = screenCanvasRef.current;
               // Check if screen stream is active by checking readyState and srcObject
               if (screenVid && scanvas && screenVid.readyState >= 2 && screenVid.srcObject) {
-                scanvas.width = screenVid.videoWidth;
-                scanvas.height = screenVid.videoHeight;
-                const ctx = scanvas.getContext('2d');
-                if (ctx) {
-                  ctx.drawImage(screenVid, 0, 0, scanvas.width, scanvas.height);
-                  const base64Data = scanvas.toDataURL('image/jpeg', 0.5).split(',')[1];
-                  // Send as image part
-                  sessionPromise.then(session => {
-                    session.sendRealtimeInput({
-                      media: { data: base64Data, mimeType: 'image/jpeg' }
+                const stream = screenVid.srcObject as MediaStream;
+                const track = stream.getVideoTracks()[0];
+                let frameCaptured = false;
+
+                if (track && 'ImageCapture' in window) {
+                   try {
+                     const imageCapture = new (window as any).ImageCapture(track);
+                     const bitmap = await imageCapture.grabFrame();
+                     scanvas.width = bitmap.width;
+                     scanvas.height = bitmap.height;
+                     const ctx = scanvas.getContext('2d');
+                     if (ctx) {
+                       ctx.drawImage(bitmap, 0, 0, scanvas.width, scanvas.height);
+                       const base64Data = scanvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+                       sessionPromise.then(session => {
+                         session.sendRealtimeInput({
+                           media: { data: base64Data, mimeType: 'image/jpeg' }
+                         });
+                       });
+                       frameCaptured = true;
+                     }
+                   } catch (e) {
+                      // Fallback below
+                   }
+                }
+
+                if (!frameCaptured) {
+                  // Fallback for browsers that don't support ImageCapture
+                  scanvas.width = screenVid.videoWidth;
+                  scanvas.height = screenVid.videoHeight;
+                  const ctx = scanvas.getContext('2d');
+                  if (ctx) {
+                    ctx.drawImage(screenVid, 0, 0, scanvas.width, scanvas.height);
+                    const base64Data = scanvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+                    // Send as image part
+                    sessionPromise.then(session => {
+                      session.sendRealtimeInput({
+                        media: { data: base64Data, mimeType: 'image/jpeg' }
+                      });
                     });
-                  });
+                  }
                 }
               }
             }, 1000);
