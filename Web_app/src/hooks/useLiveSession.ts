@@ -120,35 +120,32 @@ export function useLiveSession(
                       });
                     }
                     
-                      console.log(`[FLOW] USING CLIENT_CONTENT API FOR IMAGE FILE (Bypassing Tool Response)`);
-                      // Using the correct schema requested for Realtime Conversational part injection
-                      session.sendClientContent({
-                        turns: [{
+                      console.log(`[FLOW] USING REST API FALLBACK FOR IMAGE (${ext})`);
+                      
+                      // Instantiate fallback REST API call
+                      const fallbackAi = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+                      const response = await fallbackAi.models.generateContent({
+                        model: "gemini-2.5-flash",
+                        contents: [{
                           role: "user",
                           parts: [
-                            {
-                              inlineData: {
-                                mimeType: mimeType,
-                                data: baseData
-                              }
-                            },
-                            {
-                              text: "Here is the image file you just asked for. Please look at it and answer my previous question about it."
-                            }
+                            { inlineData: { mimeType, data: baseData } },
+                            { text: "Describe everything in this image in extreme, vivid detail. If there are people or characters, describe who they are. If there is text, read it out. Be comprehensive." }
                           ]
-                        }],
-                        turnComplete: true
+                        }]
                       });
                       
-                      console.log(`[readFile] Image injected into Conversational stream successfully.`);
+                      const description = response.text || "I see the image, but I couldn't generate a description.";
+                      console.log(`[readFile] Rest API success length: ${description.length} chars`);
+                      result = { 
+                        success: `You have successfully looked at the image ${freshFile.name}.\n\nHere is what you see in the image:\n\n${description}`
+                      };
+                      
                     } catch (e: any) {
                     console.error("[readFile] Image processing failed:", e);
                     result = { error: `Failed to process image: ${e.message}` };
                   }
-                  // Crucial File Architecture Fix: We bypass sending a ToolResponse for Images
-                  // because Gemini drops binary in functionResponses. By simply continuing, 
-                  // the functionResponse is skipped, and it only sees the ClientContent visual.
-                  continue;
+                  // The tool loop naturally continues below and sends the text description back to Eva!
                 }
                 // Handle Audio Maps (Mp3, Wav)
                 else if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext)) {
@@ -159,22 +156,29 @@ export function useLiveSession(
                     const mimeType = ext === 'mp3' ? 'audio/mp3' : `audio/${ext}`;
                     
                     if (session) {
-                      console.log(`[FLOW] USING CLIENT_CONTENT API FOR AUDIO FILE (Bypassing Tool Response)`);
-                      session.sendClientContent({
-                        turns: [{
+                      console.log(`[FLOW] USING REST API FALLBACK FOR AUDIO (${ext})`);
+                      
+                      const fallbackAi = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+                      const response = await fallbackAi.models.generateContent({
+                        model: "gemini-2.5-flash", // We can use flash for audio parsing too under the latest SDK
+                        contents: [{
                           role: "user",
                           parts: [
                             { inlineData: { mimeType, data: base64 } },
-                            { text: "Here is the audio file you requested. Please listen to it." }
+                            { text: "Please listen to this audio file and provide a highly detailed, comprehensive transcript and description of everything happening or being discussed." }
                           ]
-                        }],
-                        turnComplete: true
+                        }]
                       });
+                      
+                      const transcript = response.text || "I listened to the audio, but couldn't generate a transcript.";
+                      result = { 
+                        success: `You have successfully listened to ${freshFile.name}.\n\nHere is the exact transcript and description:\n${transcript}`
+                      };
                     }
                   } catch (e: any) {
-                    result = { error: `Failed to process audio: ${e.message}` };
+                    result = { error: `Failed to process audio via REST API: ${e.message}` };
                   }
-                  continue; // Bypass tool response for binary media
+                  // Let the tool naturally loop and push the result backwards!
                 }
                 // Handle Videos natively by fast-forwarding an invisible video element and extracting frames
                 else if (['mp4', 'webm'].includes(ext)) {
