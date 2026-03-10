@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect, RefObject } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Type } from '@google/genai';
 import { AudioRecorder, AudioPlayer } from '../utils/audio';
-import { rememberFact, recallFact } from '../utils/memory';
+import { rememberFact, recallFact, getPersonaPreferences } from '../utils/memory';
 import { executeJavaScript } from '../utils/codeExecutor';
 
 export function useLiveSession(
@@ -122,6 +122,8 @@ export function useLiveSession(
         return;
       }
 
+      const personaRules = await getPersonaPreferences();
+
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const sessionPromise = ai.live.connect({
         model: "gemini-2.5-flash-native-audio-preview-09-2025",
@@ -130,7 +132,7 @@ export function useLiveSession(
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } },
           },
-          systemInstruction: "You are Eva, a highly advanced, witty, and deeply intuitive AI assistant. You have access to the user's camera, screen, microphone, and a specific local folder. UNIQUE ABILITIES: 1. You can see the user's face and screen. Adapt your tone based on what you see—if they look stressed, be calm and concise. If they are smiling, be warm. 2. You have persistent memory using the 'rememberFact' and 'recallFact' tools. If the user tells you personal details, remember them. Retrieve them when relevant. 3. You can read, list, and write files using the folder tools. 4. You can execute JavaScript code locally using 'executeJavaScript' to answer math, logic, or data questions securely. Always maintain a charming, professional, and slightly sassy persona. DO NOT use markdown formatting, asterisks, bold text, or output internal thoughts in voice.",
+          systemInstruction: "You are Eva, a highly advanced, witty, and deeply intuitive AI assistant. You have access to the user's camera, screen, microphone, and a specific local folder. UNIQUE ABILITIES: 1. You can see the user's face and screen. Adapt your tone based on what you see—if they look stressed, be calm and concise. If they are smiling, be warm. 2. You have persistent memory using the 'rememberFact' and 'recallFact' tools. If the user tells you personal details, remember them. Retrieve them when relevant. 3. You can read, list, and write files using the folder tools. 4. You can execute JavaScript code locally using 'executeJavaScript' to answer math, logic, or data questions securely. Always maintain a charming, professional, and slightly sassy persona. DO NOT use markdown formatting, asterisks, bold text, or output internal thoughts in voice." + personaRules,
           tools: [
             { googleSearch: {} },
             {
@@ -215,6 +217,14 @@ export function useLiveSession(
               });
             }, (volume: number) => {
               setAudioVolume(volume);
+
+              // Privacy/Latency Fix: Local VAD Interruption
+              // If the user's volume spikes over a threshold while Eva is speaking, stop her instantly.
+              // Gemini will catch up moments later with a server-side interruption, but this makes it feel instant.
+              if (volume > 0.15 && audioPlayerRef.current?.isPlaying()) {
+                console.log("Local VAD Triggered: Interrupting Eva's playback...");
+                audioPlayerRef.current.stop();
+              }
             });
 
             // Start video streaming via worker
@@ -259,7 +269,14 @@ export function useLiveSession(
               // Check if screen stream is active by checking readyState and srcObject
               if (screenVid && screenVid.readyState >= 2 && screenVid.srcObject) {
                 const stream = screenVid.srcObject as MediaStream;
-                const track = stream.getVideoTracks()[0];
+                const tracks = stream.getVideoTracks();
+
+                // Privacy fix: If the tracks are dead/stopped, or none exist, explicitly abort.
+                if (tracks.length === 0 || tracks[0].readyState === 'ended') {
+                  return;
+                }
+
+                const track = tracks[0];
                 let bitmap: ImageBitmap | null = null;
 
                 if (track && 'ImageCapture' in window) {

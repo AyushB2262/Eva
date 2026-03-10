@@ -11,10 +11,55 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const screenVideoRef = useRef<HTMLVideoElement>(null);
+
+  // Implemented Memory Constraints (Limit history to 2 logins, clear caches)
+  useEffect(() => {
+    if (!sessionStorage.getItem('evaSessionActive')) {
+      sessionStorage.setItem('evaSessionActive', 'true');
+      const loginCount = parseInt(localStorage.getItem('evaLoginCount') || '0', 10) + 1;
+
+      if (loginCount > 2) {
+        // Clear all previous caches safely
+        console.log("Memory constraint reached: Clearing previous memories and caches to optimize AI performance.");
+        indexedDB.deleteDatabase('eva_memory_db');
+        localStorage.setItem('evaLoginCount', '1');
+      } else {
+        localStorage.setItem('evaLoginCount', loginCount.toString());
+      }
+    }
+  }, []);
+
   const [cameraEnabled, setCameraEnabled] = useState(true);
   const { isConnected, connect, disconnect, audioVolume } = useLiveSession(connectedFiles, screenVideoRef, cameraEnabled);
   const [cameraActive, setCameraActive] = useState(false);
   const [screenActive, setScreenActive] = useState(false);
+
+  // Privacy Bug Fix: Physically stop camera tracks when toggled off
+  useEffect(() => {
+    if (!isConnected || !cameraActive) return;
+
+    if (!cameraEnabled) {
+      if (videoRef.current && videoRef.current.srcObject) {
+        const stream = videoRef.current.srcObject as MediaStream;
+        stream.getVideoTracks().forEach(track => track.stop());
+        videoRef.current.srcObject = null;
+      }
+    } else {
+      if (videoRef.current && !videoRef.current.srcObject) {
+        navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280, max: 1920 }, height: { ideal: 720, max: 1080 } }
+        }).then(stream => {
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            videoRef.current.play().catch(console.error);
+          }
+        }).catch(err => {
+          console.error("Failed to re-enable camera:", err);
+          setCameraEnabled(false);
+        });
+      }
+    }
+  }, [cameraEnabled, isConnected, cameraActive]);
   const handleConnectFolder = async () => {
     try {
       // @ts-ignore - showDirectoryPicker is potentially not typed standardly everywhere
@@ -69,7 +114,13 @@ export default function App() {
       setScreenActive(false);
     } else {
       try {
-        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 }
+          },
+          audio: false
+        });
         if (screenVideoRef.current) {
           screenVideoRef.current.srcObject = stream;
           screenVideoRef.current.play();
@@ -101,7 +152,12 @@ export default function App() {
       }
     } else {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 }
+          }
+        });
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.play();
@@ -124,8 +180,8 @@ export default function App() {
           <header className="p-6 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50 backdrop-blur-md z-20 relative">
             <div className="flex items-center gap-8">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center border border-emerald-500/50">
-                  <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+                <div className="w-8 h-8 rounded-full bg-yellow-500/20 flex items-center justify-center border border-yellow-500/50">
+                  <div className="w-3 h-3 rounded-full bg-yellow-500 animate-pulse"></div>
                 </div>
                 <h1 className="text-xl font-medium tracking-tight">Eva Core</h1>
               </div>
@@ -133,7 +189,7 @@ export default function App() {
             <div className="flex items-center gap-4">
               <button
                 onClick={toggleScreenShare}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${screenActive ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/50' : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${screenActive ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50' : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
                   }`}
               >
                 {screenActive ? <XSquare size={16} /> : <MonitorSmartphone size={16} />}
@@ -150,7 +206,7 @@ export default function App() {
                 onClick={toggleConnection}
                 className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all ${isConnected
                   ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/50'
-                  : 'bg-emerald-500 text-zinc-950 hover:bg-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]'
+                  : 'bg-yellow-500 text-zinc-950 hover:bg-yellow-400 shadow-[0_0_15px_rgba(234,179,8,0.3)]'
                   }`}
               >
                 {isConnected ? <MicOff size={16} /> : <Mic size={16} />}
@@ -196,8 +252,8 @@ export default function App() {
                   )}
                   {cameraActive && cameraEnabled && (
                     <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-black/50 backdrop-blur-md px-2 py-1 rounded-md border border-white/10">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                      <span className="text-[10px] font-mono text-emerald-500 uppercase tracking-wider">Live</span>
+                      <div className="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse"></div>
+                      <span className="text-[10px] font-mono text-yellow-500 uppercase tracking-wider">Live</span>
                     </div>
                   )}
 
@@ -217,16 +273,16 @@ export default function App() {
                 </div>
 
                 {/* Screen Share Feed */}
-                <div className={`rounded-xl overflow-hidden bg-zinc-900 border border-indigo-500/30 relative aspect-video shadow-lg animate-in fade-in slide-in-from-top-4 ${!screenActive ? 'hidden' : ''}`}>
+                <div className={`rounded-xl overflow-hidden bg-zinc-900 border border-yellow-500/30 relative aspect-video shadow-lg animate-in fade-in slide-in-from-top-4 ${!screenActive ? 'hidden' : ''}`}>
                   <video
                     ref={screenVideoRef}
                     className="w-full h-full object-contain bg-black"
                     muted
                     playsInline
                   />
-                  <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-indigo-500/20 backdrop-blur-md px-2 py-1 rounded-md border border-indigo-500/30">
-                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></div>
-                    <span className="text-[10px] font-mono text-indigo-400 uppercase tracking-wider">Screen</span>
+                  <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-yellow-500/20 backdrop-blur-md px-2 py-1 rounded-md border border-yellow-500/30">
+                    <div className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse"></div>
+                    <span className="text-[10px] font-mono text-yellow-400 uppercase tracking-wider">Screen</span>
                   </div>
                 </div>
 

@@ -146,4 +146,8 @@ export class AudioPlayer {
     this.audioContext.close();
     this.audioContext = new AudioContext({ sampleRate: 24000 });
   }
+
+  isPlaying(): boolean {
+    return this.audioContext.state === 'running' && this.nextTime > this.audioContext.currentTime;
+  }
 }

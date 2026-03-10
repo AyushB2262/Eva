@@ -40,12 +40,22 @@ self.onmessage = async (e) => {
     if (!bitmap) return;
 
     try {
+        let drawWidth = bitmap.width;
+        let drawHeight = bitmap.height;
+
+        // Strict resolution constraint (max 1080p) to keep payloads small
+        if (drawWidth > 1920 || drawHeight > 1080) {
+            const ratio = Math.min(1920 / drawWidth, 1080 / drawHeight);
+            drawWidth = Math.floor(drawWidth * ratio);
+            drawHeight = Math.floor(drawHeight * ratio);
+        }
+
         if (!offscreenCanvas) {
-            offscreenCanvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+            offscreenCanvas = new OffscreenCanvas(drawWidth, drawHeight);
             ctx = offscreenCanvas.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D;
-        } else if (offscreenCanvas.width !== bitmap.width || offscreenCanvas.height !== bitmap.height) {
-            offscreenCanvas.width = bitmap.width;
-            offscreenCanvas.height = bitmap.height;
+        } else if (offscreenCanvas.width !== drawWidth || offscreenCanvas.height !== drawHeight) {
+            offscreenCanvas.width = drawWidth;
+            offscreenCanvas.height = drawHeight;
             // After resize, forces new frame detection
             prevFrameData = null;
         }
