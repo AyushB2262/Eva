@@ -5,6 +5,7 @@ import { motion } from 'motion/react';
 import { SignedIn, SignedOut, UserButton } from '@clerk/clerk-react';
 import Login from './components/Login';
 import Avatar3D from './components/Avatar3D';
+import ActionFeed from './components/ActionFeed';
 
 export default function App() {
   const [connectedFiles, setConnectedFiles] = useState<File[]>([]);
@@ -30,7 +31,7 @@ export default function App() {
   }, []);
 
   const [cameraEnabled, setCameraEnabled] = useState(true);
-  const { isConnected, connect, disconnect, audioVolume } = useLiveSession(connectedFiles, screenVideoRef, cameraEnabled);
+  const { isConnected, connect, disconnect, audioVolume, activeTask } = useLiveSession(connectedFiles, screenVideoRef, cameraEnabled);
   const [cameraActive, setCameraActive] = useState(false);
   const [screenActive, setScreenActive] = useState(false);
 
@@ -316,6 +317,7 @@ export default function App() {
                 {/* Center Panel: Orb */}
                 <div className="flex-1 flex flex-col relative bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-900 via-zinc-950 to-zinc-950 items-center justify-center overflow-hidden">
                   <Avatar3D volume={audioVolume} isConnected={isConnected} />
+                  <ActionFeed activeTask={activeTask} />
                 </div>
 
               </div>
