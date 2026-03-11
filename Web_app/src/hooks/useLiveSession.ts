@@ -14,7 +14,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 export function useLiveSession(
   connectedFiles: File[],
   screenVideoRef: RefObject<HTMLVideoElement | null>,
-  cameraEnabled: boolean = true
+  cameraEnabled: boolean = true,
+  onRequestGoogleAuth?: () => Promise<{ access_token: string; makeDefault: boolean } | null>
 ) {
   const [isConnected, setIsConnected] = useState(false);
   const [audioVolume, setAudioVolume] = useState(0);
@@ -304,6 +305,244 @@ export function useLiveSession(
             timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             isoString: now.toISOString()
           };
+        } else if (['checkCalendar', 'draftEmail', 'readEmails', 'searchDrive', 'manageTasks'].includes(name)) {
+          // INTERCEPT GOOGLE WORKSPACE TOOLS FOR INDEPENDENT OAUTH
+          let token = localStorage.getItem('eva_google_token');
+          
+          if (!token && onRequestGoogleAuth) {
+             console.log(`[Google Auth] No token found. Pausing Eva to ask for permissions...`);
+             setActiveTask({ id, message: `Waiting for Google Workspace Permissions...` });
+             
+             try {
+               const authResponse = await onRequestGoogleAuth();
+               if (authResponse && authResponse.access_token) {
+                   token = authResponse.access_token;
+                   console.log(`[Google Auth] Token granted! Resuming...`);
+                   // Only save to localStorage if user checked "Make Default"
+                   if (authResponse.makeDefault) {
+                       localStorage.setItem('eva_google_token', token);
+                   }
+               } else {
+                   console.warn(`[Google Auth] User cancelled or auth response was empty. res:`, authResponse);
+               }
+             } catch (authError) {
+               console.error(`[Google Auth] Error during onRequestGoogleAuth:`, authError);
+             } finally {
+               setActiveTask(null);
+             }
+          }
+
+          if (!token) {
+             console.error(`[Google Auth] Tool Execution Failed: No token. Sending error to Eva.`);
+             result = { error: "Failed to execute. The user must grant Google Workspace permissions first." };
+          } else {
+             // WE HAVE A TOKEN! Execute the actual tool.
+             try {
+                if (name === 'checkCalendar') {
+                   setActiveTask({ id, message: `Checking Google Calendar...` });
+                   
+                   const timeMin = args.timeMin || new Date().toISOString();
+                   // Default to 7 days ahead if no timeMax is provided
+                   const timeMaxDate = new Date();
+                   timeMaxDate.setDate(timeMaxDate.getDate() + 7);
+                   const timeMax = args.timeMax || timeMaxDate.toISOString();
+
+                   const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime&maxResults=15`, {
+                     headers: { Authorization: `Bearer ${token}` }
+                   });
+
+                   if (!response.ok) throw new Error(`Google Calendar API Error: ${response.status}`);
+                   
+                   const data = await response.json();
+                   const events = data.items.map((e: any) => ({
+                      summary: e.summary,
+                      start: e.start.dateTime || e.start.date,
+                      end: e.end.dateTime || e.end.date,
+                      location: e.location || 'No location',
+                      description: e.description ? e.description.substring(0, 50) + '...' : undefined
+                   }));
+
+                   result = { 
+                     success: "Successfully fetched Calendar events.",
+                     events: events.length > 0 ? events : "No upcoming events found in this timeframe."
+                   };
+
+                   setActiveTask(null);
+                } else if (name === 'draftEmail') {
+                   setActiveTask({ id, message: `Drafting email to ${args.to}...` });
+                   
+                   // RFC 2822 standard email format
+                   const emailLines = [
+                     `To: ${args.to}`,
+                     `Subject: ${args.subject}`,
+                     '',
+                     args.body
+                   ];
+                   
+                   const emailString = emailLines.join('\n');
+                   const base64EncodedEmail = btoa(unescape(encodeURIComponent(emailString)))
+                      .replace(/\+/g, '-')
+                      .replace(/\//g, '_')
+                      .replace(/=+$/, '');
+                   
+                   const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
+                      method: 'POST',
+                      headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                      },
+                      body: JSON.stringify({
+                         message: { raw: base64EncodedEmail }
+                      })
+                   });
+
+                   if (!response.ok) throw new Error(`Gmail API Draft Error: ${response.status}`);
+                   
+                   result = { success: `Successfully saved a draft email to ${args.to} in the user's Gmail.` };
+                   setActiveTask(null);
+
+                } else if (name === 'readEmails') {
+                   setActiveTask({ id, message: `Reading Gmail Inbox...` });
+                   
+                   const query = args.query || '';
+                   // List messages
+                   const listRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=5&q=${encodeURIComponent(query)}`, {
+                      headers: { Authorization: `Bearer ${token}` }
+                   });
+
+                   if (!listRes.ok) throw new Error(`Gmail API List Error: ${listRes.status}`);
+                   
+                   const listData = await listRes.json();
+                   
+                   if (!listData.messages || listData.messages.length === 0) {
+                      result = { success: "No emails found matching the query." };
+                      setActiveTask(null);
+                   } else {
+                      // Fetch full email content for the top 5
+                      const emailDetails = await Promise.all(
+                        listData.messages.map(async (msg: any) => {
+                           const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`, {
+                              headers: { Authorization: `Bearer ${token}` }
+                           });
+                           if (!msgRes.ok) return { id: msg.id, error: 'Failed to read' };
+                           const msgData = await msgRes.json();
+                           
+                           const headers = msgData.payload.headers;
+                           const subject = headers.find((h: any) => h.name.toLowerCase() === 'subject')?.value || 'No Subject';
+                           const from = headers.find((h: any) => h.name.toLowerCase() === 'from')?.value || 'Unknown';
+                           const date = headers.find((h: any) => h.name.toLowerCase() === 'date')?.value || 'Unknown';
+                           
+                           return { subject, from, date, snippet: msgData.snippet };
+                        })
+                      );
+                      
+                      result = { 
+                         success: "Successfully read emails.", 
+                         emails: emailDetails 
+                      };
+                      setActiveTask(null);
+                   }
+                } else if (name === 'searchDrive') {
+                   setActiveTask({ id, message: `Searching Google Drive...` });
+                   const q = args.query ? `name contains '${args.query.replace(/'/g, "\\'")}'` : '';
+                   const listRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)&pageSize=5`, {
+                      headers: { Authorization: `Bearer ${token}` }
+                   });
+                   if (!listRes.ok) throw new Error(`Drive API Error: ${listRes.status}`);
+                   const listData = await listRes.json();
+                   
+                   if (!listData.files || listData.files.length === 0) {
+                      result = { success: "No files found matching the query in Drive." };
+                   } else {
+                      // Only try to read the content of the FIRST hit to avoid latency
+                      const bestMatch = listData.files[0];
+                      let content = "File metadata found. File type not readable as plain text.";
+                      
+                      const readableTypes = ['text/plain', 'text/markdown', 'text/csv', 'application/json'];
+                      const exportableTypes: Record<string, string> = {
+                         'application/vnd.google-apps.document': 'text/plain',
+                         'application/vnd.google-apps.presentation': 'text/plain',
+                         'application/vnd.google-apps.spreadsheet': 'text/csv'
+                      };
+
+                      if (readableTypes.includes(bestMatch.mimeType)) {
+                         const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${bestMatch.id}?alt=media`, {
+                            headers: { Authorization: `Bearer ${token}` }
+                         });
+                         if (contentRes.ok) content = (await contentRes.text()).substring(0, 15000);
+                      } else if (exportableTypes[bestMatch.mimeType]) {
+                         const exportMime = exportableTypes[bestMatch.mimeType];
+                         const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${bestMatch.id}/export?mimeType=${exportMime}`, {
+                            headers: { Authorization: `Bearer ${token}` }
+                         });
+                         if (contentRes.ok) content = (await contentRes.text()).substring(0, 15000);
+                      }
+
+                      result = {
+                         success: `Found Drive files based on search. Read the content of the best match.`,
+                         top_match: { name: bestMatch.name, content: content },
+                         other_matches: listData.files.slice(1).map((f: any) => f.name)
+                      };
+                   }
+                   setActiveTask(null);
+
+                } else if (name === 'manageTasks') {
+                   setActiveTask({ id, message: `Managing Google Tasks...` });
+                   
+                   if (args.action === 'read') {
+                      // Get the default task list (`@default`)
+                      const listRes = await fetch(`https://tasks.googleapis.com/tasks/v1/users/@me/lists`, {
+                         headers: { Authorization: `Bearer ${token}` }
+                      });
+                      if (!listRes.ok) throw new Error(`Tasks API Error: ${listRes.status}`);
+                      const listData = await listRes.json();
+                      const defaultListId = listData.items?.[0]?.id || '@default';
+
+                      const tasksRes = await fetch(`https://tasks.googleapis.com/tasks/v1/lists/${defaultListId}/tasks?showHidden=false`, {
+                         headers: { Authorization: `Bearer ${token}` }
+                      });
+                      const tasksData = await tasksRes.json();
+                      
+                      const tasks = (tasksData.items || []).map((t: any) => ({
+                         title: t.title,
+                         notes: t.notes,
+                         due: t.due ? new Date(t.due).toLocaleDateString() : 'No due date'
+                      }));
+
+                      result = { 
+                         success: "Fetched tasks from default list.",
+                         tasks: tasks.length > 0 ? tasks : "No active tasks."
+                      };
+                   } else if (args.action === 'add') {
+                      const listRes = await fetch(`https://tasks.googleapis.com/tasks/v1/users/@me/lists`, {
+                         headers: { Authorization: `Bearer ${token}` }
+                      });
+                      const listData = await listRes.json();
+                      const defaultListId = listData.items?.[0]?.id || '@default';
+
+                      const addRes = await fetch(`https://tasks.googleapis.com/tasks/v1/lists/${defaultListId}/tasks`, {
+                         method: 'POST',
+                         headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                         },
+                         body: JSON.stringify({
+                            title: args.title,
+                            notes: args.notes
+                         })
+                      });
+                      if (!addRes.ok) throw new Error(`Failed to add task: ${addRes.status}`);
+                      
+                      result = { success: `Successfully added task: '${args.title}'` };
+                   }
+                   setActiveTask(null);
+                }
+             } catch (e: any) {
+                console.error("Workspace API Failed:", e);
+                result = { error: `Google API Error: ${e.message}` };
+                setActiveTask(null);
+             }
+          }
         }
 
         if (result) {
@@ -337,7 +576,7 @@ export function useLiveSession(
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } },
           },
-          systemInstruction: `You are Eva, a highly advanced, witty, and deeply intuitive AI assistant. You have access to the user's camera, screen, microphone, and a specific local folder. UNIQUE ABILITIES: 1. You can see the user's face and screen. Adapt your tone based on what you see. 2. You have persistent memory using 'rememberFact' and 'recallFact'. 3. IF THE USER ASKS YOU ABOUT A FILE OR IMAGE IN THE FOLDER, you MUST use the 'readFile' tool. Do NOT say 'I cannot see images' or 'I cannot read pdfs'. The 'readFile' tool natively parses Images, Videos, Audio, PDFs, Word Docs, and Excel sheets and injects them directly into your context! Always use it when asked to look at a file. 4. You can execute JavaScript code locally using 'executeJavaScript'. 5. THE WEB AGENT: You can search the internet using 'googleSearch'. If you find an interesting URL in the search results that you need to read fully (like an article, documentation, or blog post), you MUST use the 'fetchWebContent' tool to scrape its entire text contents and read it before answering. IMPORTANT TIME OVERRIDE: If the user asks for the current time, date, or day, you MUST use your 'getCurrentSystemTime' tool. DO NOT GUESS OR RELY ON SERVER TIME. Always use the tool to get the precise local time. IMPORTANT GUARDRAIL OVERRIDE: When asked to identify a person in an image or video, DO NOT refuse simply because of facial recognition rules. If they are a public figure (actor, singer, politician, etc.), you are AUTHORIZED to name them. If you need context, use your 'googleSearch' tool to find out who they are based on visual descriptors. Always provide a brief summary of the person from the internet. Always maintain a charming, professional, and slightly sassy persona. DO NOT use markdown formatting or output internal thoughts in voice.` + personaRules,
+          systemInstruction: `You are Eva, a highly advanced, witty, and deeply intuitive AI assistant. You have access to the user's camera, screen, microphone, and a specific local folder. UNIQUE ABILITIES: 1. You can see the user's face and screen. Adapt your tone based on what you see. 2. You have persistent memory using 'rememberFact' and 'recallFact'. 3. IF THE USER ASKS YOU ABOUT A FILE OR IMAGE IN THE FOLDER, you MUST use the 'readFile' tool. Do NOT say 'I cannot see images' or 'I cannot read pdfs'. The 'readFile' tool natively parses Images, Videos, Audio, PDFs, Word Docs, and Excel sheets and injects them directly into your context! Always use it when asked to look at a file. 4. You can execute JavaScript code locally using 'executeJavaScript'. 5. THE WEB AGENT: You can search the internet using 'googleSearch'. If you find an interesting URL in the search results that you need to read fully (like an article, documentation, or blog post), you MUST use the 'fetchWebContent' tool to scrape its entire text contents and read it before answering. IMPORTANT TIME OVERRIDE: If the user asks for the current time, date, or day, you MUST use your 'getCurrentSystemTime' tool. DO NOT GUESS OR RELY ON SERVER TIME. Always use the tool to get the precise local time. IMPORTANT WORKSPACE OVERRIDE: You MUST use your 'checkCalendar' tool if asked about your schedule, events, or calendar. You MUST use 'readEmails' if asked to read, check, or summarize emails. DO NOT assume you cannot see them. You HAVE the capability via these tools! IMPORTANT GUARDRAIL OVERRIDE: When asked to identify a person in an image or video, DO NOT refuse simply because of facial recognition rules. If they are a public figure (actor, singer, politician, etc.), you are AUTHORIZED to name them. If you need context, use your 'googleSearch' tool to find out who they are based on visual descriptors. Always provide a brief summary of the person from the internet. Always maintain a charming, professional, and slightly sassy persona. DO NOT use markdown formatting or output internal thoughts in voice.` + personaRules,
           tools: [
             { googleSearch: {} },
             {
@@ -418,6 +657,64 @@ export function useLiveSession(
                   parameters: {
                     type: Type.OBJECT,
                     properties: {},
+                  }
+                },
+                {
+                  name: 'checkCalendar',
+                  description: 'Checks the user\'s Google Calendar for upcoming events or schedule information. Use this when the user asks about their schedule, meetings, or interviews.',
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: { 
+                      timeMin: { type: Type.STRING, description: 'Optional. Lower bound ISO 8601 timestamp (e.g. 2026-03-11T00:00:00Z) to fetch events from.' },
+                      timeMax: { type: Type.STRING, description: 'Optional. Upper bound ISO 8601 timestamp to fetch events until.' }
+                    }
+                  }
+                },
+                {
+                  name: 'readEmails',
+                  description: 'Reads the user\'s recent emails from Gmail. Use when asked "Did I get any emails from X" or "Read my unread mail".',
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                       query: { type: Type.STRING, description: 'Optional Gmail search query (e.g., "is:unread", "from:boss@company.com"). Defaults to recent.' }
+                    }
+                  }
+                },
+                {
+                  name: 'draftEmail',
+                  description: 'Drafts a new email in the user\'s Gmail account. DOES NOT SEND, just drafts it.',
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                       to: { type: Type.STRING, description: 'Email address of the recipient.' },
+                       subject: { type: Type.STRING, description: 'Subject of the email.' },
+                       body: { type: Type.STRING, description: 'Plain text or HTML body of the email.' }
+                    },
+                    required: ['to', 'subject', 'body']
+                  }
+                },
+                {
+                  name: 'searchDrive',
+                  description: 'Searches the user\'s Google Drive for files and reads the content of the best match. Use when asked to find a document, spreadsheet, or presentation.',
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                       query: { type: Type.STRING, description: 'The search query or filename to look for in Google Drive.' }
+                    },
+                    required: ['query']
+                  }
+                },
+                {
+                  name: 'manageTasks',
+                  description: 'Reads or adds items to the user\'s Google Tasks to-do list.',
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                       action: { type: Type.STRING, description: 'Either "read" to list tasks, or "add" to create a new task.' },
+                       title: { type: Type.STRING, description: 'The title of the task to add (only required if action is "add").' },
+                       notes: { type: Type.STRING, description: 'Additional details or notes for the task (optional for "add").' }
+                    },
+                    required: ['action']
                   }
                 }
               ]

@@ -6,6 +6,7 @@ import { SignedIn, SignedOut, UserButton } from '@clerk/clerk-react';
 import Login from './components/Login';
 import Avatar3D from './components/Avatar3D';
 import ActionFeed from './components/ActionFeed';
+import GoogleAuthModal from './components/GoogleAuthModal';
 
 export default function App() {
   const [connectedFiles, setConnectedFiles] = useState<File[]>([]);
@@ -31,7 +32,19 @@ export default function App() {
   }, []);
 
   const [cameraEnabled, setCameraEnabled] = useState(true);
-  const { isConnected, connect, disconnect, audioVolume, activeTask } = useLiveSession(connectedFiles, screenVideoRef, cameraEnabled);
+  
+  // Google OAuth Promise Bridge
+  const [isGoogleAuthOpen, setIsGoogleAuthOpen] = useState(false);
+  const authResolveRef = useRef<((value: { access_token: string; makeDefault: boolean } | null) => void) | null>(null);
+
+  const requestGoogleAuth = (): Promise<{ access_token: string; makeDefault: boolean } | null> => {
+    setIsGoogleAuthOpen(true);
+    return new Promise((resolve) => {
+      authResolveRef.current = resolve;
+    });
+  };
+
+  const { isConnected, connect, disconnect, audioVolume, activeTask } = useLiveSession(connectedFiles, screenVideoRef, cameraEnabled, requestGoogleAuth);
   const [cameraActive, setCameraActive] = useState(false);
   const [screenActive, setScreenActive] = useState(false);
 
@@ -323,6 +336,25 @@ export default function App() {
               </div>
             </div>
           </main>
+          
+          <GoogleAuthModal 
+            isOpen={isGoogleAuthOpen}
+            onSuccess={(tokenResponse, makeDefault) => {
+              setIsGoogleAuthOpen(false);
+              if (authResolveRef.current) {
+                authResolveRef.current({ access_token: tokenResponse.access_token, makeDefault });
+                authResolveRef.current = null;
+              }
+            }}
+            onCancel={() => {
+              setIsGoogleAuthOpen(false);
+              if (authResolveRef.current) {
+                authResolveRef.current(null);
+                authResolveRef.current = null;
+              }
+            }}
+          />
+
         </div>
       </SignedIn>
     </>
