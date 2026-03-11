@@ -305,7 +305,7 @@ export function useLiveSession(
             timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             isoString: now.toISOString()
           };
-        } else if (['checkCalendar', 'draftEmail', 'readEmails', 'searchDrive', 'manageTasks'].includes(name)) {
+        } else if (['checkCalendar', 'draftEmail', 'readEmails', 'searchDrive', 'manageTasks', 'analyzeYouTube'].includes(name)) {
           // INTERCEPT GOOGLE WORKSPACE TOOLS FOR INDEPENDENT OAUTH
           let token = localStorage.getItem('eva_google_token');
           
@@ -536,6 +536,45 @@ export function useLiveSession(
                       result = { success: `Successfully added task: '${args.title}'` };
                    }
                    setActiveTask(null);
+
+                } else if (name === 'analyzeYouTube') {
+                   setActiveTask({ id, message: `Analyzing YouTube Account...` });
+                   
+                   if (args.action === 'subscriptions') {
+                      const subRes = await fetch(`https://youtube.googleapis.com/youtube/v3/subscriptions?part=snippet&mine=true&maxResults=15`, {
+                         headers: { Authorization: `Bearer ${token}` }
+                      });
+                      if (!subRes.ok) throw new Error(`YouTube API Error: ${subRes.status}`);
+                      const subData = await subRes.json();
+                      
+                      const subs = (subData.items || []).map((s: any) => ({
+                         channel: s.snippet.title,
+                         description: s.snippet.description
+                      }));
+                      
+                      result = {
+                         success: "Fetched latest YouTube subscriptions.",
+                         subscriptions: subs.length > 0 ? subs : "No subscriptions found."
+                      };
+                   } else if (args.action === 'activity') {
+                      const actRes = await fetch(`https://youtube.googleapis.com/youtube/v3/activities?part=snippet,contentDetails&mine=true&maxResults=10`, {
+                         headers: { Authorization: `Bearer ${token}` }
+                      });
+                      if (!actRes.ok) throw new Error(`YouTube API Error: ${actRes.status}`);
+                      const actData = await actRes.json();
+                      
+                      const activities = (actData.items || []).map((a: any) => ({
+                         type: a.snippet.type,
+                         title: a.snippet.title,
+                         date: new Date(a.snippet.publishedAt).toLocaleString()
+                      }));
+                      
+                      result = {
+                         success: "Fetched recent YouTube activity.",
+                         activity: activities.length > 0 ? activities : "No recent activity found."
+                      };
+                   }
+                   setActiveTask(null);
                 }
              } catch (e: any) {
                 console.error("Workspace API Failed:", e);
@@ -713,6 +752,17 @@ export function useLiveSession(
                        action: { type: Type.STRING, description: 'Either "read" to list tasks, or "add" to create a new task.' },
                        title: { type: Type.STRING, description: 'The title of the task to add (only required if action is "add").' },
                        notes: { type: Type.STRING, description: 'Additional details or notes for the task (optional for "add").' }
+                    },
+                    required: ['action']
+                  }
+                },
+                {
+                  name: 'analyzeYouTube',
+                  description: 'Analyzes the user\'s YouTube account. Can fetch their latest subscribed channels or their recent watch/like activity.',
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                       action: { type: Type.STRING, description: 'Either "subscriptions" to view their subscribed channels, or "activity" to view their recent personal watch/like history.' }
                     },
                     required: ['action']
                   }
