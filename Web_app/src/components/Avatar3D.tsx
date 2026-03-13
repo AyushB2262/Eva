@@ -1,174 +1,286 @@
-import React, { useRef } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Icosahedron, Torus, Environment, Float, Sphere } from '@react-three/drei';
+import React, { useRef, useMemo } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { OrbitControls, Environment, Float, Sphere, MeshRefractionMaterial, Cylinder } from '@react-three/drei';
 import * as THREE from 'three';
 
 interface Avatar3DProps {
-    volume: number;
-    isConnected: boolean;
+  volume: number;
+  isConnected: boolean;
 }
 
+// Custom Shader for the internal "Circular Code" patterns
+const CodeRingsShader = {
+  uniforms: {
+    uTime: { value: 0 },
+    uVolume: { value: 0 },
+    uColor: { value: new THREE.Color("#eab308") },
+    uInactiveColor: { value: new THREE.Color("#18181b") },
+    uIsConnected: { value: 0.0 }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    varying vec3 vPosition;
+    void main() {
+      vUv = uv;
+      vPosition = position;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    uniform float uVolume;
+    uniform vec3 uColor;
+    uniform vec3 uInactiveColor;
+    uniform float uIsConnected;
+    varying vec2 vUv;
+    varying vec3 vPosition;
+
+    float random(vec2 st) {
+      return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+    }
+
+    void main() {
+      vec2 center = vec2(0.5);
+      float dist = distance(vUv, center);
+      float angle = atan(vUv.y - 0.5, vUv.x - 0.5);
+      
+      // Create concentric ring zones
+      float ringId = floor(dist * 20.0);
+      float speed = (random(vec2(ringId)) - 0.5) * 2.0;
+      
+      // Scrolling "code" bits pattern
+      float code = step(0.6, sin(angle * 40.0 + uTime * speed * 5.0 + random(vec2(ringId)) * 6.28));
+      code *= step(0.2, fract(dist * 20.0)); // Gaps between rings
+      
+      // Audio reaction: Patterns get sharper and faster with volume
+      float burst = uVolume * 2.0 * step(0.9, random(vec2(floor(uTime * 10.0), ringId)));
+      float alpha = code * smoothstep(0.45, 0.1, dist) * (0.4 + burst);
+      
+      // Bloom/Glow boost
+      vec3 glow = uColor * (1.5 + uVolume * 3.0);
+      vec3 finalColor = mix(uInactiveColor, glow, uIsConnected);
+      
+      gl_FragColor = vec4(finalColor, alpha * uIsConnected + 0.02);
+    }
+  `
+};
+
 function HolographicCore({ volume, isConnected }: Avatar3DProps) {
-    const groupRef = useRef<THREE.Group>(null);
-    const innerCoreRef = useRef<THREE.Mesh>(null);
-    const wireframeRef = useRef<THREE.Mesh>(null);
-    const ring1Ref = useRef<THREE.Mesh>(null);
-    const ring2Ref = useRef<THREE.Mesh>(null);
-    const ring3Ref = useRef<THREE.Mesh>(null);
+  const coreRef = useRef<THREE.Group>(null);
+  const shaderRef = useRef<THREE.ShaderMaterial>(null);
+  const glowRef = useRef<THREE.Mesh>(null);
+  const mechRef = useRef<THREE.Group>(null);
 
-    // Dynamic Reactive Targets
-    const targetScale = isConnected ? 1.0 + (volume * 0.8) : 0.8;
-    const targetEmissive = isConnected ? Math.max(0.5, volume * 5.0) : 0.1;
-    const targetRingSpeed = isConnected ? 1.0 + (volume * 10) : 0.2;
+  useFrame((state, delta) => {
+    if (shaderRef.current) {
+      shaderRef.current.uniforms.uTime.value += delta;
+      shaderRef.current.uniforms.uVolume.value = THREE.MathUtils.lerp(shaderRef.current.uniforms.uVolume.value, volume, 0.2);
+      shaderRef.current.uniforms.uIsConnected.value = THREE.MathUtils.lerp(shaderRef.current.uniforms.uIsConnected.value, isConnected ? 1 : 0, 0.1);
+    }
 
-    useFrame((state, delta) => {
-        if (!groupRef.current) return;
+    if (coreRef.current) {
+      coreRef.current.rotation.y += delta * 0.15;
+      const scale = 1.0 + (volume * 0.1);
+      coreRef.current.scale.set(scale, scale, scale);
+    }
 
-        // Smooth Lerping for Scale
-        groupRef.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.1);
+    if (mechRef.current) {
+      mechRef.current.rotation.y -= delta * 0.08;
+      mechRef.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.5) * 0.05;
+    }
 
-        // Core Pulsing
-        if (innerCoreRef.current) {
-            const mat = innerCoreRef.current.material as THREE.MeshPhysicalMaterial;
-            mat.emissiveIntensity = THREE.MathUtils.lerp(mat.emissiveIntensity, targetEmissive, 0.1);
-        }
+    if (glowRef.current) {
+      const glowScale = 1.6 + (volume * 0.6);
+      glowRef.current.scale.lerp(new THREE.Vector3(glowScale, glowScale, glowScale), 0.1);
+    }
+  });
 
-        // Wireframe Pulsing
-        if (wireframeRef.current) {
-            const mat = wireframeRef.current.material as THREE.MeshStandardMaterial;
-            mat.emissiveIntensity = THREE.MathUtils.lerp(mat.emissiveIntensity, targetEmissive * 1.5, 0.1);
-            wireframeRef.current.rotation.y += delta * 0.2;
-            wireframeRef.current.rotation.x += delta * 0.1;
-        }
+  const activeColor = "#eab308";
 
-        // Orbiting Rings
-        if (ring1Ref.current && ring2Ref.current && ring3Ref.current) {
-            ring1Ref.current.rotation.x += delta * targetRingSpeed * 0.5;
-            ring1Ref.current.rotation.y += delta * targetRingSpeed * 0.3;
+  return (
+    <group scale={0.7}> {/* Decreased size of orb by 30% */}
+      
+      {/* 1. Internal Core with Code Shader */}
+      <group ref={coreRef}>
+        <Sphere args={[0.7, 64, 64]}>
+          <shaderMaterial
+            ref={shaderRef}
+            attach="material"
+            {...CodeRingsShader}
+            transparent={true}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+          />
+        </Sphere>
+        
+        {/* Refractive Glass Shell */}
+        <Sphere args={[0.82, 64, 64]}>
+          <meshPhysicalMaterial
+            color={isConnected ? "#ffffff" : "#27272a"}
+            transmission={1}
+            thickness={2.0}
+            roughness={0.01}
+            ior={2.4}
+            reflectivity={1}
+            envMapIntensity={3}
+            clearcoat={1}
+            transparent={true}
+            opacity={0.9}
+          />
+        </Sphere>
+      </group>
 
-            ring2Ref.current.rotation.y -= delta * targetRingSpeed * 0.4;
-            ring2Ref.current.rotation.z += delta * targetRingSpeed * 0.6;
+      {/* 2. Cyberpunk Mech Cage / Surrounding Structure */}
+      <group ref={mechRef}>
+        {/* Vertical Brackets */}
+        {[0, 120, 240].map((rot) => (
+          <group key={rot} rotation={[0, THREE.MathUtils.degToRad(rot), 0]}>
+            {/* Main Curved Arm */}
+            <Torus args={[1.05, 0.04, 16, 32, Math.PI * 0.6]} rotation={[Math.PI / 2, Math.PI / 5, 0]} position={[0, 0, 0]}>
+              <meshStandardMaterial color="#18181b" roughness={0.1} metalness={1} />
+            </Torus>
+            {/* Industrial Joints */}
+            <Sphere args={[0.08, 16, 16]} position={[0.9, 0.5, 0]}>
+              <meshStandardMaterial color="#27272a" roughness={0.4} metalness={1} />
+            </Sphere>
+            {/* Glowing Cables looping through arms */}
+            <Torus args={[1.1, 0.01, 8, 48, Math.PI * 0.6]} rotation={[Math.PI / 2, Math.PI / 5, 0]} position={[0.02, 0.02, 0]}>
+              <meshStandardMaterial 
+                color={activeColor} 
+                emissive={activeColor} 
+                emissiveIntensity={isConnected ? 4 : 0.2} 
+                transparent 
+                opacity={0.9} 
+              />
+            </Torus>
+          </group>
+        ))}
+      </group>
 
-            ring3Ref.current.rotation.x -= delta * targetRingSpeed * 0.7;
-            ring3Ref.current.rotation.z -= delta * targetRingSpeed * 0.2;
-        }
+      {/* 3. Intense Central Glow */}
+      <Sphere ref={glowRef} args={[0.4, 32, 32]}>
+        <meshBasicMaterial
+          color={activeColor}
+          transparent={true}
+          opacity={isConnected ? 0.35 : 0}
+          blending={THREE.AdditiveBlending}
+        />
+      </Sphere>
 
-        // Make the entire group slightly 'look' towards the mouse
-        const targetRotationX = (state.pointer.y * Math.PI) / 6;
-        const targetRotationY = (state.pointer.x * Math.PI) / 6;
+      {/* 4. Heavy Industrial Pedestal (Engine Mount) */}
+      <group position={[0, -1.3, 0]}>
+        {/* Multi-layered metallic base */}
+        <Cylinder args={[1.1, 1.2, 0.2, 64]}>
+          <meshStandardMaterial color="#09090b" roughness={0.1} metalness={1} />
+        </Cylinder>
+        <Cylinder args={[0.8, 1.1, 0.4, 32]} position={[0, -0.2, 0]}>
+          <meshStandardMaterial color="#18181b" roughness={0.2} metalness={0.9} />
+        </Cylinder>
+        
+        {/* Rotating Internal Engine Ring */}
+        <Torus args={[0.95, 0.03, 16, 100]} rotation={[Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
+          <meshStandardMaterial 
+            color="#27272a" 
+            roughness={0} 
+            metalness={1}
+          />
+        </Torus>
 
-        groupRef.current.rotation.x = THREE.MathUtils.lerp(groupRef.current.rotation.x, targetRotationX, 0.05);
-        groupRef.current.rotation.y = THREE.MathUtils.lerp(groupRef.current.rotation.y, targetRotationY, 0.05);
-    });
+        {/* Glowing Rim Conduits */}
+        <Torus args={[1.0, 0.015, 16, 100]} rotation={[Math.PI / 2, 0, 0]} position={[0, 0.1, 0]}>
+          <meshStandardMaterial 
+            color={activeColor} 
+            emissive={activeColor} 
+            emissiveIntensity={isConnected ? 6 : 0.5} 
+            transparent 
+            opacity={0.9}
+          />
+        </Torus>
 
-    const activeColor = "#eab308"; // Golden Yellow
-    const inactiveColor = "#52525b"; // Zinc/Gray
-    const currentColor = isConnected ? activeColor : inactiveColor;
+        {/* Small Data Hub / Indicator Lights */}
+        {[0, 1.57, 3.14, 4.71].map((angle, i) => (
+          <Sphere key={i} args={[0.04, 16, 16]} position={[Math.cos(angle) * 1.05, 0, Math.sin(angle) * 1.05]}>
+            <meshBasicMaterial color={activeColor} transparent opacity={isConnected ? 0.8 : 0.2} />
+          </Sphere>
+        ))}
+      </group>
 
-    return (
-        <Float speed={isConnected ? 3 : 1} rotationIntensity={0.2} floatIntensity={0.5}>
-            <group ref={groupRef}>
-                
-                {/* 1. Inner Refractive Glass Core */}
-                <Icosahedron ref={innerCoreRef} args={[0.62, 5]} scale={1}>
-                    <meshPhysicalMaterial 
-                        color={currentColor}
-                        emissive={currentColor}
-                        emissiveIntensity={0.5}
-                        roughness={0.05}
-                        metalness={0.2}
-                        transmission={1.0} // Fully transparent volumetric physical glass
-                        thickness={2.0}
-                        ior={2.3}          // High index of refraction like a diamond
-                        clearcoat={1.0}
-                        clearcoatRoughness={0.0}
-                        transparent={true}
-                        opacity={0.25}      // Low opacity to reveal wires
-                        depthWrite={false} // CRITICAL: Allows drawing geometry behind this glass
-                        side={THREE.DoubleSide}
-                    />
-                </Icosahedron>
+      {isConnected && <EnergyParticles count={100} color={activeColor} />}
+    </group>
+  );
+}
 
-                {/* 2. Outer Wireframe Energy Grid */}
-                <Icosahedron ref={wireframeRef} args={[0.9, 3]}>
-                    <meshStandardMaterial 
-                        color={currentColor}
-                        emissive={currentColor}
-                        emissiveIntensity={1}
-                        wireframe={true}
-                        transparent
-                        opacity={0.4}
-                    />
-                </Icosahedron>
 
-                {/* 3. Orbiting Data Ring 1 (Inner) */}
-                <Torus ref={ring1Ref} args={[1.2, 0.02, 16, 64]} rotation={[Math.PI / 4, 0, 0]}>
-                    <meshStandardMaterial 
-                        color={currentColor} 
-                        emissive={currentColor}
-                        emissiveIntensity={isConnected ? 2 : 0}
-                        roughness={0.1} 
-                        metalness={1} 
-                        transparent 
-                        opacity={0.6}
-                    />
-                </Torus>
 
-                {/* 4. Orbiting Data Ring 2 (Middle) */}
-                <Torus ref={ring2Ref} args={[1.6, 0.015, 16, 64]} rotation={[0, Math.PI / 3, 0]}>
-                     <meshStandardMaterial 
-                        color={currentColor} 
-                        emissive={currentColor}
-                        emissiveIntensity={isConnected ? 1.5 : 0}
-                        roughness={0.1} 
-                        metalness={1} 
-                        transparent 
-                        opacity={0.4}
-                    />
-                </Torus>
+function EnergyParticles({ count, color }: { count: number; color: string }) {
+  const points = useMemo(() => {
+    const p = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      const r = 1.0 + Math.random() * 0.5;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.random() * Math.PI;
+      p[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      p[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+      p[i * 3 + 2] = r * Math.cos(phi);
+    }
+    return p;
+  }, [count]);
 
-                {/* 5. Orbiting Data Ring 3 (Outer) */}
-                <Torus ref={ring3Ref} args={[2.0, 0.03, 16, 128]} rotation={[Math.PI / 6, Math.PI / 2, Math.PI / 8]}>
-                     <meshStandardMaterial 
-                        color={currentColor} 
-                        emissive={currentColor}
-                        emissiveIntensity={isConnected ? 3 : 0}
-                        roughness={0.2} 
-                        metalness={0.8} 
-                        transparent 
-                        opacity={0.8}
-                    />
-                </Torus>
+  const ref = useRef<THREE.Points>(null);
+  useFrame((state) => {
+    if (ref.current) {
+      ref.current.rotation.y += 0.002;
+      ref.current.rotation.x += 0.001;
+    }
+  });
 
-                {/* Optional: Central Glow Sprite/Sphere */}
-                <Sphere args={[0.7, 32, 32]}>
-                    <meshBasicMaterial 
-                        color={currentColor} 
-                        transparent 
-                        opacity={isConnected ? 0.15 : 0.05} 
-                        blending={THREE.AdditiveBlending} 
-                    />
-                </Sphere>
+  return (
+    <points ref={ref}>
+      <bufferGeometry>
+        <bufferAttribute
+          attach="attributes-position"
+          count={points.length / 3}
+          array={points}
+          itemSize={3}
+        />
+      </bufferGeometry>
+      <pointsMaterial
+        size={0.02}
+        color={color}
+        transparent
+        opacity={0.6}
+        blending={THREE.AdditiveBlending}
+        sizeAttenuation
+      />
+    </points>
+  );
+}
 
-            </group>
-        </Float>
-    );
+function Torus({ args, ...props }: any) {
+  return (
+    <mesh {...props}>
+      <torusGeometry args={args} />
+    </mesh>
+  );
 }
 
 export default function Avatar3D({ volume, isConnected }: Avatar3DProps) {
-    return (
-        <div className="w-full h-full absolute inset-0 z-0 pointer-events-none">
-            <Canvas camera={{ position: [0, 0, 5], fov: 45 }} className="w-full h-full" gl={{ antialias: true, alpha: true }}>
-                <ambientLight intensity={0.2} />
-                <directionalLight position={[10, 10, 5]} intensity={1.5} color={isConnected ? "#fef08a" : "#ffffff"} />
-                <pointLight position={[-10, -10, -5]} intensity={1} color={isConnected ? "#ca8a04" : "#a1a1aa"} />
-                
-                {/* Core Hologram */}
-                <HolographicCore volume={volume} isConnected={isConnected} />
-                
-                {/* Advanced Environment reflections mapping */}
-                <Environment preset="night" />
-            </Canvas>
-        </div>
-    );
+  return (
+    <div className="w-full h-full absolute inset-0 z-0 pointer-events-none">
+      <Canvas camera={{ position: [0, 0, 4], fov: 40 }} gl={{ antialias: true, alpha: true, toneMapping: THREE.ReinhardToneMapping }}>
+        <ambientLight intensity={0.1} />
+        <pointLight position={[5, 5, 5]} intensity={2} color="#fef08a" />
+        <pointLight position={[-5, -5, -5]} intensity={1} color="#ca8a04" />
+        
+        {/* Core Hologram */}
+        <Float speed={isConnected ? 2 : 0.5} rotationIntensity={0.2} floatIntensity={0.3}>
+          <HolographicCore volume={volume} isConnected={isConnected} />
+        </Float>
+        
+        <Environment preset="night" />
+        <OrbitControls enableZoom={false} enablePan={false} autoRotate autoRotateSpeed={0.5} />
+      </Canvas>
+    </div>
+  );
 }
