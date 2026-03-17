@@ -1,0 +1,3 @@
+(globalThis.TURBOPACK||(globalThis.TURBOPACK=[])).push(["object"==typeof document?document.currentScript:void 0,53487,e=>{"use strict";self.onmessage=async e=>{let{query:t,id:s}=e.data;try{self.postMessage({type:"status",message:`Researching: ${t}`});let e=await fetch(`https://s.jina.ai/${encodeURIComponent(t)}`);if(!e.ok)throw Error(`Failed to fetch from Jina Search API. Status: ${e.status}`);let a=(await e.text()).substring(0,15e3);self.postMessage({type:"complete",result:`RESEARCH REPORT ON "${t}":
+
+${a}`,id:s})}catch(e){self.postMessage({type:"error",error:e.message,id:s})}},e.s([])}]);
