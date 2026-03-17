@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect, RefObject } from 'react';
+import { useAuth } from '@clerk/nextjs';
 import { GoogleGenAI, LiveServerMessage, Modality, Type } from '@google/genai';
 import { AudioRecorder, AudioPlayer } from '@/utils/audio';
 import { rememberFact, recallFact, getPersonaPreferences } from '@/utils/memory';
@@ -24,6 +25,7 @@ export function useLiveSession(
   cameraEnabled: boolean = true,
   onRequestGoogleAuth?: () => Promise<{ access_token: string; makeDefault: boolean } | null>
 ) {
+  const { userId, getToken } = useAuth();
   const sessionIdRef = useRef<string>(Math.random().toString(36).substring(7));
 
 
@@ -361,11 +363,11 @@ export function useLiveSession(
             result = { error: e.message };
           }
         } else if (name === 'rememberFact') {
-          result = { message: await rememberFact(args.fact) };
+          const token = await getToken({ template: 'supabase' }) || undefined;
+          result = { message: await rememberFact(args.fact, userId || undefined, token) };
         } else if (name === 'recallFact') {
-          result = { message: await recallFact(args.query) };
-
-
+          const token = await getToken({ template: 'supabase' }) || undefined;
+          result = { message: await recallFact(args.query, userId || undefined, token) };
         } else if (name === 'projectData') {
           console.log(`[Tool Call] projectData invoked with ${args.values?.length} values. Type: ${args.type || 'bar'}`);
           setProjectionData({ values: args.values, type: args.type || 'bar' });
@@ -709,7 +711,8 @@ export function useLiveSession(
         return;
       }
 
-      const personaRules = await getPersonaPreferences();
+      const token = await getToken({ template: 'supabase' }) || undefined;
+      const personaRules = await getPersonaPreferences(userId || undefined, token);
 
 
 
