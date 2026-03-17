@@ -12,16 +12,12 @@ import {
   ShieldCheck 
 } from 'lucide-react';
 import Logo from '../components/Logo';
-import { trackEvent } from '../utils/database';
-import { SignedIn, SignedOut, UserButton, SignInButton, useUser } from '@clerk/clerk-react';
-
+import { SignedIn, SignedOut, UserButton, SignInButton } from '@clerk/clerk-react';
 
 export default function Downloads() {
-  const { user } = useUser();
-  const userId = user?.id;
-
   return (
     <div className="relative flex flex-col w-full min-h-screen bg-zinc-950 text-zinc-100 font-sans">
+
 
       {/* Navigation */}
       <header className="flex items-center justify-between border-b border-yellow-500/10 px-6 py-4 lg:px-20 bg-zinc-950 sticky top-0 z-50">
@@ -64,21 +60,16 @@ export default function Downloads() {
             title="Windows" 
             version="v2.4.0 • 120MB" 
             platform="Windows 10+" 
-            userId={userId}
           />
           <DownloadCard 
             icon={<Apple size={28} />} 
             title="macOS" 
             version="v2.4.0 • 115MB" 
             platform="macOS 11.0+" 
-            userId={userId}
           />
           
           {/* Web App Card */}
-          <div 
-            onClick={() => trackEvent('platform_open', 'web', {}, userId)}
-            className="bg-yellow-500/5 p-6 rounded-xl border border-yellow-500/40 flex flex-col items-center text-center shadow-lg hover:bg-yellow-500/10 transition-all relative overflow-hidden group cursor-pointer"
-          >
+          <div className="bg-yellow-500/5 p-6 rounded-xl border border-yellow-500/40 flex flex-col items-center text-center shadow-lg hover:bg-yellow-500/10 transition-all relative overflow-hidden group">
             <div className="absolute top-0 right-0 bg-yellow-500 text-zinc-950 text-[10px] font-bold px-2 py-0.5 rounded-bl">INSTANT</div>
             <div className="size-14 bg-yellow-500/20 rounded-full flex items-center justify-center mb-4 text-yellow-500">
               <Globe size={28} />
@@ -106,7 +97,6 @@ export default function Downloads() {
             version="v2.3.5 • 45MB" 
             platform="Google Play Store" 
             isMobile
-            userId={userId}
           />
           <DownloadCard 
             icon={<Apple size={28} />} 
@@ -114,8 +104,8 @@ export default function Downloads() {
             version="v2.3.5 • 52MB" 
             platform="Requires iOS 14.0+" 
             isMobile
-            userId={userId}
           />
+
 
         </div>
 
@@ -175,13 +165,7 @@ export default function Downloads() {
   );
 }
 
-function DownloadCard({ icon, title, version, platform, userId, isMobile = false }: any) {
-  const handleDownload = () => {
-    trackEvent('download_click', title.toLowerCase(), { version, platform }, userId);
-    // In a real app, this would also trigger the actual file download logic
-    console.log(`[Analytics] Tracked download: ${title} for user ${userId}`);
-  };
-
+function DownloadCard({ icon, title, version, platform, isMobile = false }: any) {
   return (
     <div className="bg-zinc-900/50 p-6 rounded-xl border border-white/5 flex flex-col items-center text-center shadow-sm hover:border-yellow-500/30 transition-all">
       <div className="size-14 bg-yellow-500/10 rounded-full flex items-center justify-center mb-4 text-yellow-500">
@@ -191,14 +175,12 @@ function DownloadCard({ icon, title, version, platform, userId, isMobile = false
       <p className="text-zinc-600 text-[10px] uppercase font-mono tracking-tight mb-6 flex-1">
         {version}<br/>{platform}
       </p>
-      <button 
-        onClick={handleDownload}
-        className="w-full bg-yellow-500 text-zinc-950 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:brightness-110 transition-all"
-      >
+      <button className="w-full bg-yellow-500 text-zinc-950 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:brightness-110 transition-all">
         <Download size={16} />
         {isMobile ? 'Get App' : 'Download'}
       </button>
     </div>
   );
 }
+
 

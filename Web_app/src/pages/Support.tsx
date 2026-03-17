@@ -1,41 +1,13 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Sparkles, Shield, MessagesSquare, ChevronDown, Headset } from 'lucide-react';
 import Logo from '../components/Logo';
-import { createTicket } from '../utils/database';
-import { SignedIn, SignedOut, UserButton, SignInButton, useUser } from '@clerk/clerk-react';
+import { SignedIn, SignedOut, UserButton, SignInButton } from '@clerk/clerk-react';
 
 export default function Support() {
-  const { user } = useUser();
-  const userId = user?.id;
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [ticketStatus, setTicketStatus] = useState<'idle' | 'success' | 'error'>('idle');
-
-  const handleSubmitTicket = async () => {
-    if (!userId) {
-       alert("Please sign in to contact support.");
-       return;
-    }
-    
-    setIsSubmitting(true);
-    const { error } = await createTicket(
-      userId, 
-      "General Inquiry", 
-      "User requested support via the quick contact button."
-    );
-    
-    setIsSubmitting(false);
-    if (error) {
-      setTicketStatus('error');
-    } else {
-      setTicketStatus('success');
-      setTimeout(() => setTicketStatus('idle'), 3000);
-    }
-  };
-
-
   return (
     <div className="relative flex min-h-screen flex-col bg-zinc-950 text-zinc-100 font-sans">
+
 
       {/* Header */}
       <header className="flex items-center justify-between border-b border-yellow-500/10 px-6 py-4 lg:px-20 bg-zinc-950 sticky top-0 z-50 backdrop-blur-md bg-zinc-950/80">
@@ -119,17 +91,10 @@ export default function Support() {
                 <h2 className="text-4xl font-black tracking-tighter">Still need help?</h2>
                 <p className="text-zinc-500 text-lg">Our dedicated support team is available 24/7 to ensure your AI experience is seamless and productive.</p>
                 <div className="flex gap-4">
-                  <button 
-                    onClick={handleSubmitTicket}
-                    disabled={isSubmitting}
-                    className="bg-yellow-500 hover:bg-yellow-400 text-zinc-950 font-bold px-8 py-3 rounded-lg transition-colors disabled:opacity-50"
-                  >
-                    {isSubmitting ? 'Creating Ticket...' : ticketStatus === 'success' ? 'Ticket Created!' : 'Contact Support'}
-                  </button>
+                  <button className="bg-yellow-500 hover:bg-yellow-400 text-zinc-950 font-bold px-8 py-3 rounded-lg transition-colors">Contact Support</button>
                   <button className="border border-yellow-500 text-yellow-500 hover:bg-yellow-500/10 font-bold px-8 py-3 rounded-lg transition-colors">Live Chat</button>
                 </div>
-                {ticketStatus === 'error' && <p className="text-red-500 text-sm">Failed to create ticket. Please try again.</p>}
-                {ticketStatus === 'success' && <p className="text-green-500 text-sm">Eva has received your request and is prioritizing it.</p>}
+
 
               </div>
               <div className="lg:w-1/2 w-full">

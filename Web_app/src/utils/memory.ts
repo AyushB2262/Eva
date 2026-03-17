@@ -1,7 +1,9 @@
-import { supabase } from './supabase';
+import { openDB } from 'idb';
 import { pipeline } from '@xenova/transformers';
 
+const DB_NAME = 'eva-memory';
 const STORE_NAME = 'memories';
+const PREFS_STORE = 'preferences';
 
 // Singleton for embedding pipeline
 let embedPipeline: any = null;
@@ -13,86 +15,87 @@ async function getEmbedder() {
     return embedPipeline;
 }
 
-export async function rememberFact(fact: string, userId: string): Promise<string> {
-    if (!userId) return "User ID missing. Cannot store memory.";
+async function getDB() {
+    return openDB(DB_NAME, 1, {
+        upgrade(db) {
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+                db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+            }
+        },
+    });
+}
+
+export async function rememberFact(fact: string): Promise<string> {
     try {
         const embedder = await getEmbedder();
         const output = await embedder(fact, { pooling: 'mean', normalize: true });
         const vector = Array.from(output.data);
 
-        const { error } = await supabase.from(STORE_NAME).insert({
-            user_id: userId,
+        const db = await getDB();
+        await db.add(STORE_NAME, {
             fact,
             vector,
             timestamp: new Date().toISOString()
         });
 
-        if (error) throw error;
-        
-        console.log(`[Supabase] Memory stored for user ${userId}`);
+        console.log(`[Memory] Fact stored locally: ${fact}`);
         return `Successfully remembered: "${fact}"`;
     } catch (err: any) {
-        console.error("[Supabase] Storage failed:", err);
+        console.error("[Memory] Storage failed:", err);
         return `Failed to remember: ${err.message}`;
     }
 }
 
-export async function recallFact(query: string, userId: string): Promise<string> {
-    if (!userId) return "User ID missing. Cannot recall memory.";
+export async function recallFact(query: string): Promise<string> {
     try {
         const embedder = await getEmbedder();
         const queryOutput = await embedder(query, { pooling: 'mean', normalize: true });
-        const queryVector = Array.from(queryOutput.data);
+        const queryVector = Array.from(queryOutput.data) as number[];
 
-        // Call the pgvector RPC function
-        const { data, error } = await supabase.rpc('match_memories', {
-            query_embedding: queryVector,
-            match_threshold: 0.3,
-            match_count: 5,
-            p_user_id: userId
-        });
+        const db = await getDB();
+        const allMemories = await db.getAll(STORE_NAME);
 
-        if (error) throw error;
-
-        if (!data || data.length === 0) {
-            return "I don't find any relevant memories in the cloud.";
+        if (allMemories.length === 0) {
+            return "I don't have any memories stored yet.";
         }
 
-        return `Found relevant memories:\n- ${data.map((m: any) => m.fact).join('\n- ')}`;
+        // Local Cosine Similarity
+        const scored = allMemories.map(m => {
+            const score = dotProduct(queryVector, m.vector);
+            return { ...m, score };
+        }).filter(m => m.score > 0.4)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 5);
+
+        if (scored.length === 0) {
+            return "I don't find any relevant memories locally.";
+        }
+
+        return `Found relevant memories:\n- ${scored.map(m => m.fact).join('\n- ')}`;
     } catch (err: any) {
-        console.error("[Supabase] Recall failed:", err);
+        console.error("[Memory] Recall failed:", err);
         return `Failed to recall: ${err.message}`;
     }
 }
 
-export async function logSession(userId: string, sessionId: string, role: 'user' | 'eva', content: string) {
-    if (!userId) return;
-    try {
-        await supabase.from('session_logs').insert({
-            user_id: userId,
-            session_id: sessionId,
-            role,
-            content,
-            timestamp: new Date().toISOString()
-        });
-    } catch (e) {
-        console.error("[Supabase] Logging failed:", e);
-    }
+function dotProduct(a: number[], b: number[]) {
+    return a.reduce((sum, val, i) => sum + val * b[i], 0);
 }
 
-export async function getPersonaPreferences(userId: string): Promise<string> {
-    if (!userId) return "";
+export async function getPersonaPreferences(): Promise<string> {
     try {
-        const { data, error } = await supabase
-            .from(STORE_NAME)
-            .select('fact')
-            .eq('user_id', userId)
-            .or('fact.ilike.%prefer%,fact.ilike.%always%,fact.ilike.%never%');
+        const db = await getDB();
+        const all = await db.getAll(STORE_NAME);
+        
+        // Filter for things that look like preferences
+        const keywords = ['prefer', 'always', 'never', 'love', 'hate', 'like', 'don\'t like'];
+        const prefs = all.filter(m => 
+            keywords.some(k => m.fact.toLowerCase().includes(k))
+        );
 
-        if (error) throw error;
-        if (!data || data.length === 0) return "";
+        if (prefs.length === 0) return "";
 
-        const rules = data.map((m: any) => m.fact).join(' ');
+        const rules = prefs.map(m => m.fact).join(' ');
         return `\n\nUSER PREFERENCES (ADHERE TO THESE STRICTLY): ${rules}`;
     } catch (e) {
         return "";

@@ -1,8 +1,8 @@
 import { useState, useRef, useCallback, useEffect, RefObject } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Type } from '@google/genai';
 import { AudioRecorder, AudioPlayer } from '../utils/audio';
-import { rememberFact, recallFact, getPersonaPreferences, logSession } from '../utils/memory';
-import { useUser } from '@clerk/clerk-react';
+import { rememberFact, recallFact, getPersonaPreferences } from '../utils/memory';
+
 
 import { executeJavaScript } from '../utils/codeExecutor';
 import * as mammoth from 'mammoth';
@@ -23,9 +23,8 @@ export function useLiveSession(
   cameraEnabled: boolean = true,
   onRequestGoogleAuth?: () => Promise<{ access_token: string; makeDefault: boolean } | null>
 ) {
-  const { user } = useUser();
-  const userId = user?.id || '';
   const sessionIdRef = useRef<string>(Math.random().toString(36).substring(7));
+
 
   const [isConnected, setIsConnected] = useState(false);
 
@@ -64,7 +63,8 @@ export function useLiveSession(
          setActiveTask(null);
           // Log AI Message to Supabase
           if (result) {
-             logSession(userId, sessionIdRef.current, 'eva', result);
+             // Session logging removed
+
           }
           if (sessionRef.current) {
              const session = sessionRef.current;
@@ -357,9 +357,10 @@ export function useLiveSession(
             result = { error: e.message };
           }
         } else if (name === 'rememberFact') {
-          result = { message: await rememberFact(args.fact, userId) };
+          result = { message: await rememberFact(args.fact) };
         } else if (name === 'recallFact') {
-          result = { message: await recallFact(args.query, userId) };
+          result = { message: await recallFact(args.query) };
+
 
         } else if (name === 'projectData') {
           console.log(`[Tool Call] projectData invoked with ${args.values?.length} values. Type: ${args.type || 'bar'}`);
@@ -704,7 +705,8 @@ export function useLiveSession(
         return;
       }
 
-      const personaRules = await getPersonaPreferences(userId);
+      const personaRules = await getPersonaPreferences();
+
 
 
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -1008,20 +1010,7 @@ export function useLiveSession(
             }, 1000);
 
           },
-          onmessage: async (message: any) => {
-            // Log User Transcription (Native Input)
-            const userContent = message.serverContent?.turnComplete === false; // User is speaking
-            // In the latest SDK, transcription is often sent in parts
-            const userTranscript = message.serverContent?.modelTurn?.parts?.find((p: any) => p.text)?.text;
-            
-            // Note: The Multimodal Live API sends transcription in serverContent.modelTurn for BOTH sides 
-            // depending on the phase. We'll log whatever text arrives.
-            if (message.serverContent?.modelTurn?.parts?.[0]?.text) {
-               const role = message.serverContent.modelTurn.role === 'model' ? 'eva' : 'user';
-               logSession(userId, sessionIdRef.current, role, message.serverContent.modelTurn.parts[0].text);
-            }
-
-
+          onmessage: async (message: LiveServerMessage) => {
             // Handle audio output
             const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
             if (base64Audio) {
@@ -1039,6 +1028,7 @@ export function useLiveSession(
               await handleToolCall(toolCall, sessionRef.current);
             }
           },
+
 
           onerror: (error) => {
             console.error("Live API Error:", error);
