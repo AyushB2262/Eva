@@ -50,11 +50,15 @@ export default function Home() {
       {/* Hero Section */}
       <main class="flex-1 pt-20">
         <section className="relative flex min-h-[90vh] flex-col items-center justify-center px-4 py-20 text-center overflow-hidden">
-          {/* 3D Holographic Visual Placeholder */}
-          <div className="absolute inset-0 z-0 flex items-center justify-center opacity-40 pointer-events-none">
-            <div className="relative w-[300px] h-[300px] md:w-[600px] md:h-[600px] rounded-full bg-gradient-to-br from-yellow-500/40 via-transparent to-yellow-500/20 blur-3xl"></div>
-            <div className="absolute w-[200px] h-[200px] md:w-[400px] md:h-[400px] rounded-full border border-yellow-500/30 animate-pulse"></div>
+          {/* 3D Holographic Visual Asset (Blurred Background) */}
+          <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-40">
+            <img 
+              src="/assets/orb_bg.png" 
+              alt="Eva Orb Background" 
+              className="w-full max-w-[1200px] object-contain blur-[80px] scale-150 rotate-12"
+            />
           </div>
+
           
           <div className="relative z-10 max-w-4xl mx-auto flex flex-col items-center gap-8">
             <motion.div 

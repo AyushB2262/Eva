@@ -30,6 +30,8 @@ export function useLiveSession(
   const screenCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const connectedFilesRef = useRef<File[]>(connectedFiles);
   const cameraEnabledRef = useRef<boolean>(cameraEnabled);
+  const isDisconnectedRef = useRef(false);
+
 
   useEffect(() => {
     connectedFilesRef.current = connectedFiles;
@@ -41,6 +43,8 @@ export function useLiveSession(
 
   const connect = useCallback(async (videoElement: HTMLVideoElement) => {
     if (isConnected) return;
+    isDisconnectedRef.current = false;
+
 
     audioRecorderRef.current = new AudioRecorder();
     audioPlayerRef.current = new AudioPlayer();
@@ -775,7 +779,16 @@ export function useLiveSession(
         },
         callbacks: {
           onopen: () => {
+            // Privacy Guard: If the user clicked disconnect while the connection was pending,
+            // abort immediately and do not start recorders or video streams.
+            if (isDisconnectedRef.current) {
+              console.warn("[Privacy Guard] Connection opened but user already requested disconnect. Aborting...");
+              sessionPromise.then(s => s.close());
+              return;
+            }
+
             setIsConnected(true);
+
 
             // Start audio recording
             audioRecorderRef.current?.start((base64) => {
@@ -909,9 +922,11 @@ export function useLiveSession(
   }, [isConnected]);
 
   const disconnect = useCallback(() => {
+    isDisconnectedRef.current = true;
     setIsConnected(false);
     audioRecorderRef.current?.stop();
     audioPlayerRef.current?.stop();
+
     if (videoIntervalRef.current) {
       clearInterval(videoIntervalRef.current);
       videoIntervalRef.current = null;

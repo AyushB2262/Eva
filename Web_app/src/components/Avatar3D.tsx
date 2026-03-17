@@ -14,7 +14,7 @@ const CodeRingsShader = {
     uTime: { value: 0 },
     uVolume: { value: 0 },
     uColor: { value: new THREE.Color("#eab308") },
-    uInactiveColor: { value: new THREE.Color("#18181b") },
+    uInactiveColor: { value: new THREE.Color("#422006") }, // Dark amber instead of grey
     uIsConnected: { value: 0.0 }
   },
   vertexShader: `
@@ -52,15 +52,15 @@ const CodeRingsShader = {
       float code = step(0.6, sin(angle * 40.0 + uTime * speed * 5.0 + random(vec2(ringId)) * 6.28));
       code *= step(0.2, fract(dist * 20.0)); // Gaps between rings
       
-      // Audio reaction: Patterns get sharper and faster with volume
-      float burst = uVolume * 2.0 * step(0.9, random(vec2(floor(uTime * 10.0), ringId)));
-      float alpha = code * smoothstep(0.45, 0.1, dist) * (0.4 + burst);
+      // Audio reaction
+      float burst = uVolume * 2.5 * step(0.92, random(vec2(floor(uTime * 15.0), ringId)));
+      float alpha = code * smoothstep(0.48, 0.1, dist) * (0.5 + burst);
       
-      // Bloom/Glow boost
-      vec3 glow = uColor * (1.5 + uVolume * 3.0);
-      vec3 finalColor = mix(uInactiveColor, glow, uIsConnected);
+      // Force yellow/gold glow always, boost when connected
+      vec3 glow = uColor * (1.8 + uVolume * 4.0);
+      vec3 baseColor = mix(uInactiveColor, glow, uIsConnected);
       
-      gl_FragColor = vec4(finalColor, alpha * uIsConnected + 0.02);
+      gl_FragColor = vec4(baseColor, alpha * (uIsConnected * 0.8 + 0.2) + 0.05);
     }
   `
 };
@@ -70,6 +70,7 @@ function HolographicCore({ volume, isConnected }: Avatar3DProps) {
   const shaderRef = useRef<THREE.ShaderMaterial>(null);
   const glowRef = useRef<THREE.Mesh>(null);
   const mechRef = useRef<THREE.Group>(null);
+  const planetsRef = useRef<THREE.Group>(null);
 
   useFrame((state, delta) => {
     if (shaderRef.current) {
@@ -80,7 +81,7 @@ function HolographicCore({ volume, isConnected }: Avatar3DProps) {
 
     if (coreRef.current) {
       coreRef.current.rotation.y += delta * 0.15;
-      const scale = 1.0 + (volume * 0.1);
+      const scale = 1.0 + (volume * 0.15);
       coreRef.current.scale.set(scale, scale, scale);
     }
 
@@ -89,20 +90,37 @@ function HolographicCore({ volume, isConnected }: Avatar3DProps) {
       mechRef.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.5) * 0.05;
     }
 
+    if (planetsRef.current) {
+      planetsRef.current.children.forEach((obj, i) => {
+        const speed = 0.5 + (i * 0.2);
+        obj.rotation.y += delta * speed;
+        // Pulse planet glow
+        const mat = (obj.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial;
+        mat.opacity = 0.4 + Math.sin(state.clock.elapsedTime * 3 + i) * 0.3;
+      });
+    }
+
     if (glowRef.current) {
-      const glowScale = 1.6 + (volume * 0.6);
+      const glowScale = 1.6 + (volume * 1.2);
       glowRef.current.scale.lerp(new THREE.Vector3(glowScale, glowScale, glowScale), 0.1);
     }
   });
 
   const activeColor = "#eab308";
+  const amberColor = "#422006";
+
+  const planets = [
+    { radius: 1.4, size: 0.06, speed: 0.8 },
+    { radius: 1.8, size: 0.04, speed: 0.5 },
+    { radius: 2.2, size: 0.05, speed: 1.1 }
+  ];
 
   return (
-    <group scale={0.7}> {/* Decreased size of orb by 30% */}
+    <group scale={0.7}>
       
       {/* 1. Internal Core with Code Shader */}
       <group ref={coreRef}>
-        <Sphere args={[0.7, 64, 64]}>
+        <Sphere args={[0.7, 32, 32]}>
           <shaderMaterial
             ref={shaderRef}
             attach="material"
@@ -115,21 +133,51 @@ function HolographicCore({ volume, isConnected }: Avatar3DProps) {
         </Sphere>
         
         {/* Refractive Glass Shell */}
-        <Sphere args={[0.82, 64, 64]}>
+        <Sphere args={[0.82, 32, 32]}>
           <meshPhysicalMaterial
-            color={isConnected ? "#ffffff" : "#27272a"}
+            color={activeColor}
             transmission={1}
-            thickness={2.0}
-            roughness={0.01}
+            thickness={2.5}
+            roughness={0.0}
             ior={2.4}
             reflectivity={1}
-            envMapIntensity={3}
+            envMapIntensity={5}
             clearcoat={1}
             transparent={true}
-            opacity={0.9}
+            opacity={0.8}
           />
         </Sphere>
       </group>
+
+      {/* 2. Solar System Planets / Data Nodes */}
+      <group ref={planetsRef}>
+        {planets.map((p, i) => (
+          <group key={i}>
+            {/* Orbit Path - Unified color and enhanced glow */}
+            <Torus args={[p.radius, 0.005, 8, 64]} rotation={[Math.PI / 2, 0, 0]}>
+              <meshStandardMaterial 
+                color={activeColor} 
+                emissive={activeColor} 
+                emissiveIntensity={isConnected ? 8 : 1} 
+                transparent 
+                opacity={0.3} 
+              />
+            </Torus>
+
+            {/* Planet / Node */}
+            <group rotation={[Math.random() * Math.PI, Math.random() * Math.PI, 0]}>
+              <Sphere args={[p.size, 12, 12]} position={[p.radius, 0, 0]}>
+                <meshBasicMaterial color={activeColor} transparent opacity={0.8} blending={THREE.AdditiveBlending} />
+                {/* Planet Aura */}
+                <Sphere args={[p.size * 2, 12, 12]}>
+                   <meshBasicMaterial color={activeColor} transparent opacity={0.2} blending={THREE.AdditiveBlending} />
+                </Sphere>
+              </Sphere>
+            </group>
+          </group>
+        ))}
+      </group>
+
 
       {/* 2. Cyberpunk Mech Cage / Surrounding Structure */}
       <group ref={mechRef}>
@@ -137,29 +185,28 @@ function HolographicCore({ volume, isConnected }: Avatar3DProps) {
         {[0, 120, 240].map((rot) => (
           <group key={rot} rotation={[0, THREE.MathUtils.degToRad(rot), 0]}>
             {/* Main Curved Arm */}
-            <Torus args={[1.05, 0.04, 16, 32, Math.PI * 0.6]} rotation={[Math.PI / 2, Math.PI / 5, 0]} position={[0, 0, 0]}>
+            <Torus args={[1.05, 0.04, 8, 32, Math.PI * 0.6]} rotation={[Math.PI / 2, Math.PI / 5, 0]}>
               <meshStandardMaterial color="#18181b" roughness={0.1} metalness={1} />
             </Torus>
-            {/* Industrial Joints */}
-            <Sphere args={[0.08, 16, 16]} position={[0.9, 0.5, 0]}>
-              <meshStandardMaterial color="#27272a" roughness={0.4} metalness={1} />
-            </Sphere>
-            {/* Glowing Cables looping through arms */}
-            <Torus args={[1.1, 0.01, 8, 48, Math.PI * 0.6]} rotation={[Math.PI / 2, Math.PI / 5, 0]} position={[0.02, 0.02, 0]}>
+            {/* Note: Industrial Joints (Black Balls) removed per user request for optimization */}
+            
+            {/* Glowing Cables looping through arms - Intensified Glow */}
+            <Torus args={[1.1, 0.01, 6, 48, Math.PI * 0.6]} rotation={[Math.PI / 2, Math.PI / 5, 0]} position={[0.02, 0.02, 0]}>
               <meshStandardMaterial 
                 color={activeColor} 
                 emissive={activeColor} 
-                emissiveIntensity={isConnected ? 4 : 0.2} 
+                emissiveIntensity={isConnected ? 15 : 0.5} 
                 transparent 
-                opacity={0.9} 
+                opacity={1} 
               />
             </Torus>
+
           </group>
         ))}
       </group>
 
       {/* 3. Intense Central Glow */}
-      <Sphere ref={glowRef} args={[0.4, 32, 32]}>
+      <Sphere ref={glowRef} args={[0.4, 16, 16]}>
         <meshBasicMaterial
           color={activeColor}
           transparent={true}
@@ -171,15 +218,15 @@ function HolographicCore({ volume, isConnected }: Avatar3DProps) {
       {/* 4. Heavy Industrial Pedestal (Engine Mount) */}
       <group position={[0, -1.3, 0]}>
         {/* Multi-layered metallic base */}
-        <Cylinder args={[1.1, 1.2, 0.2, 64]}>
+        <Cylinder args={[1.1, 1.2, 0.2, 32]}>
           <meshStandardMaterial color="#09090b" roughness={0.1} metalness={1} />
         </Cylinder>
-        <Cylinder args={[0.8, 1.1, 0.4, 32]} position={[0, -0.2, 0]}>
+        <Cylinder args={[0.8, 1.1, 0.4, 16]} position={[0, -0.2, 0]}>
           <meshStandardMaterial color="#18181b" roughness={0.2} metalness={0.9} />
         </Cylinder>
         
         {/* Rotating Internal Engine Ring */}
-        <Torus args={[0.95, 0.03, 16, 100]} rotation={[Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
+        <Torus args={[0.95, 0.03, 8, 64]} rotation={[Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
           <meshStandardMaterial 
             color="#27272a" 
             roughness={0} 
@@ -188,7 +235,7 @@ function HolographicCore({ volume, isConnected }: Avatar3DProps) {
         </Torus>
 
         {/* Glowing Rim Conduits */}
-        <Torus args={[1.0, 0.015, 16, 100]} rotation={[Math.PI / 2, 0, 0]} position={[0, 0.1, 0]}>
+        <Torus args={[1.0, 0.015, 8, 64]} rotation={[Math.PI / 2, 0, 0]} position={[0, 0.1, 0]}>
           <meshStandardMaterial 
             color={activeColor} 
             emissive={activeColor} 
@@ -200,16 +247,17 @@ function HolographicCore({ volume, isConnected }: Avatar3DProps) {
 
         {/* Small Data Hub / Indicator Lights */}
         {[0, 1.57, 3.14, 4.71].map((angle, i) => (
-          <Sphere key={i} args={[0.04, 16, 16]} position={[Math.cos(angle) * 1.05, 0, Math.sin(angle) * 1.05]}>
+          <Sphere key={i} args={[0.04, 12, 12]} position={[Math.cos(angle) * 1.05, 0, Math.sin(angle) * 1.05]}>
             <meshBasicMaterial color={activeColor} transparent opacity={isConnected ? 0.8 : 0.2} />
           </Sphere>
         ))}
       </group>
 
-      {isConnected && <EnergyParticles count={100} color={activeColor} />}
+      {isConnected && <EnergyParticles count={60} color={activeColor} />}
     </group>
   );
 }
+
 
 
 
