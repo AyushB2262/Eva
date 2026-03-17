@@ -48,7 +48,7 @@ export default function Home() {
       </header>
 
       {/* Hero Section */}
-      <main class="flex-1 pt-20">
+      <main className="flex-1 pt-20">
         <section className="relative flex min-h-[90vh] flex-col items-center justify-center px-4 py-20 text-center overflow-hidden">
           {/* 3D Holographic Visual Asset (Blurred Background) */}
           <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none opacity-40">

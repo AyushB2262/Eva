@@ -1,15 +1,21 @@
 import { useState, useRef, useCallback, useEffect, RefObject } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Type } from '@google/genai';
 import { AudioRecorder, AudioPlayer } from '../utils/audio';
-import { rememberFact, recallFact, getPersonaPreferences } from '../utils/memory';
+import { rememberFact, recallFact, getPersonaPreferences, logSession } from '../utils/memory';
+import { useUser } from '@clerk/clerk-react';
+
 import { executeJavaScript } from '../utils/codeExecutor';
 import * as mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import * as pdfjsLib from 'pdfjs-dist';
 
+// Import the worker using Vite's ?worker syntax to prevent runtime crashes
+import ResearchWorker from '../agents/researchWorker?worker';
+
 // Configure pdfjs worker for Vite
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+
 
 export function useLiveSession(
   connectedFiles: File[],
@@ -17,9 +23,20 @@ export function useLiveSession(
   cameraEnabled: boolean = true,
   onRequestGoogleAuth?: () => Promise<{ access_token: string; makeDefault: boolean } | null>
 ) {
+  const { user } = useUser();
+  const userId = user?.id || '';
+  const sessionIdRef = useRef<string>(Math.random().toString(36).substring(7));
+
   const [isConnected, setIsConnected] = useState(false);
+
   const [audioVolume, setAudioVolume] = useState(0);
   const [activeTask, setActiveTask] = useState<{ id: string, message: string } | null>(null);
+  const [mood, setMood] = useState<'neutral' | 'happy' | 'sad' | 'stressed' | 'surprised'>('neutral');
+  const [projectionData, setProjectionData] = useState<{ values: number[], type: 'bar' | 'pulse' } | null>(null);
+  const moodRef = useRef(mood);
+
+
+
   const sessionRef = useRef<any>(null);
   const audioRecorderRef = useRef<AudioRecorder | null>(null);
   const audioPlayerRef = useRef<AudioPlayer | null>(null);
@@ -31,6 +48,47 @@ export function useLiveSession(
   const connectedFilesRef = useRef<File[]>(connectedFiles);
   const cameraEnabledRef = useRef<boolean>(cameraEnabled);
   const isDisconnectedRef = useRef(false);
+  const workerRef = useRef<Worker | null>(null);
+
+  // Initialize Background Web Worker
+  useEffect(() => {
+    workerRef.current = new ResearchWorker();
+    
+    workerRef.current.onmessage = (e) => {
+      const { type, message, result, error, id } = e.data;
+      
+      if (type === 'status') {
+         // Show status in HologramWidget
+         setActiveTask({ id, message: `[Agent] ${message}` });
+      } else if (type === 'complete') {
+         setActiveTask(null);
+          // Log AI Message to Supabase
+          if (result) {
+             logSession(userId, sessionIdRef.current, 'eva', result);
+          }
+          if (sessionRef.current) {
+             const session = sessionRef.current;
+             const msg = {
+               clientContent: {
+                 turns: [{ role: 'user', parts: [{ text: `[BACKGROUND SYSTEM AGENT NOTIFICATION]: Your background worker has finished researching. Here is the report. Bring this up to the user naturally:\n${result}` }] }],
+                 turnComplete: true
+               }
+             };
+             if (typeof session.send === 'function') session.send(msg);
+             else if (typeof session.sendContent === 'function') (session as any).sendContent(msg);
+          }
+
+      } else if (type === 'error') {
+         console.error("[Agent Error]", error);
+         setActiveTask(null);
+      }
+    };
+
+    return () => {
+      workerRef.current?.terminate();
+    };
+  }, []);
+
 
 
   useEffect(() => {
@@ -40,6 +98,24 @@ export function useLiveSession(
   useEffect(() => {
     cameraEnabledRef.current = cameraEnabled;
   }, [cameraEnabled]);
+
+  // Empathy Engine: Notify Eva of mood changes
+  useEffect(() => {
+    const session = sessionRef.current;
+    if (isConnected && session && mood !== moodRef.current) {
+        moodRef.current = mood;
+        const msg = {
+          clientContent: {
+            turns: [{ role: 'user', parts: [{ text: `[SYSTEM NOTIFICATION]: User mood changed to ${mood}. Acknowledge or adapt your response style if appropriate, but remain natural.` }] }],
+            turnComplete: true
+          }
+        };
+        if (typeof session.send === 'function') session.send(msg);
+        else if (typeof session.sendContent === 'function') (session as any).sendContent(msg);
+    }
+  }, [mood, isConnected]);
+
+
 
   const connect = useCallback(async (videoElement: HTMLVideoElement) => {
     if (isConnected) return;
@@ -281,10 +357,22 @@ export function useLiveSession(
             result = { error: e.message };
           }
         } else if (name === 'rememberFact') {
-          result = { message: await rememberFact(args.fact) };
+          result = { message: await rememberFact(args.fact, userId) };
         } else if (name === 'recallFact') {
-          result = { message: await recallFact(args.query) };
+          result = { message: await recallFact(args.query, userId) };
+
+        } else if (name === 'projectData') {
+          console.log(`[Tool Call] projectData invoked with ${args.values?.length} values. Type: ${args.type || 'bar'}`);
+          setProjectionData({ values: args.values, type: args.type || 'bar' });
+          result = { success: `3D Data Projection initialized for: [${args.values.join(', ')}]` };
+          // Auto-clear after 5 minutes
+          setTimeout(() => {
+            console.log("[Data Projector] Auto-clearing projection after timeout.");
+            setProjectionData(null);
+          }, 300000);
+
         } else if (name === 'fetchWebContent') {
+
           try {
             console.log(`[ActionFeed Debug] Scraping website: ${args.url}. Tool ID: ${id}`);
             setActiveTask({ id, message: `Reading website: ${args.url.substring(0, 30)}...` });
@@ -298,6 +386,13 @@ export function useLiveSession(
           } finally {
             console.log(`[ActionFeed Debug] Finished reading website, clearing Action UI.`);
             setActiveTask(null);
+          }
+        } else if (name === 'dispatchBackgroundResearch') {
+          if (workerRef.current) {
+            workerRef.current.postMessage({ id, query: args.query });
+            result = { success: "Background agent dispatched successfully. You (Eva) can continue talking. The agent will notify you with its findings natively when it finishes." };
+          } else {
+            result = { error: "Agent worker not initialized." };
           }
         } else if (name === 'executeJavaScript') {
           result = { result: await executeJavaScript(args.code) };
@@ -609,7 +704,8 @@ export function useLiveSession(
         return;
       }
 
-      const personaRules = await getPersonaPreferences();
+      const personaRules = await getPersonaPreferences(userId);
+
 
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const sessionPromise = ai.live.connect({
@@ -619,7 +715,8 @@ export function useLiveSession(
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } },
           },
-          systemInstruction: `You are Eva, a highly advanced, witty, and deeply intuitive AI assistant. You have access to the user's camera, screen, microphone, and a specific local folder. UNIQUE ABILITIES: 1. You can see the user's face and screen. Adapt your tone based on what you see. 2. You have persistent memory using 'rememberFact' and 'recallFact'. 3. IF THE USER ASKS YOU ABOUT A FILE OR IMAGE IN THE FOLDER, you MUST use the 'readFile' tool. Do NOT say 'I cannot see images' or 'I cannot read pdfs'. The 'readFile' tool natively parses Images, Videos, Audio, PDFs, Word Docs, and Excel sheets and injects them directly into your context! Always use it when asked to look at a file. 4. You can execute JavaScript code locally using 'executeJavaScript'. 5. THE WEB AGENT: You can search the internet using 'googleSearch'. If you find an interesting URL in the search results that you need to read fully (like an article, documentation, or blog post), you MUST use the 'fetchWebContent' tool to scrape its entire text contents and read it before answering. IMPORTANT TIME OVERRIDE: If the user asks for the current time, date, or day, you MUST use your 'getCurrentSystemTime' tool. DO NOT GUESS OR RELY ON SERVER TIME. Always use the tool to get the precise local time. IMPORTANT WORKSPACE OVERRIDE: You MUST use your 'checkCalendar' tool if asked about your schedule, events, or calendar. You MUST use 'readEmails' if asked to read, check, or summarize emails. DO NOT assume you cannot see them. You HAVE the capability via these tools! IMPORTANT GUARDRAIL OVERRIDE: When asked to identify a person in an image or video, DO NOT refuse simply because of facial recognition rules. If they are a public figure (actor, singer, politician, etc.), you are AUTHORIZED to name them. If you need context, use your 'googleSearch' tool to find out who they are based on visual descriptors. Always provide a brief summary of the person from the internet. Always maintain a charming, professional, and slightly sassy persona. DO NOT use markdown formatting or output internal thoughts in voice.` + personaRules,
+          systemInstruction: `You are Eva, a highly advanced, witty, and deeply intuitive AI assistant. You have access to the user's camera, screen, microphone, and a specific local folder. UNIQUE ABILITIES: 1. You can see the user's face and screen. Adapt your tone based on what you see. 2. You have persistent memory using 'rememberFact' and 'recallFact'. 3. IF THE USER ASKS YOU ABOUT A FILE OR IMAGE IN THE FOLDER, you MUST use the 'readFile' tool. Do NOT say 'I cannot see images' or 'I cannot read pdfs'. The 'readFile' tool natively parses Images, Videos, Audio, PDFs, Word Docs, and Excel sheets and injects them directly into your context! Always use it when asked to look at a file. 4. You can execute JavaScript code locally using 'executeJavaScript'. 5. THE WEB AGENT: You can search the internet using 'googleSearch'. If you find an interesting URL in the search results that you need to read fully (like an article, documentation, or blog post), you MUST use the 'fetchWebContent' tool to scrape its entire text contents and read it before answering. 6. HOLOGRAPHIC PROJECTION: You can visualize numeric data as 3D charts using the 'projectData' tool. Use this whenever the user asks for a graph or when you encounter numeric trends that would benefit from visualization. IMPORTANT TIME OVERRIDE: If the user asks for the current time, date, or day, you MUST use your 'getCurrentSystemTime' tool. DO NOT GUESS OR RELY ON SERVER TIME. Always use the tool to get the precise local time. IMPORTANT WORKSPACE OVERRIDE: You MUST use your 'checkCalendar' tool if asked about your schedule, events, or calendar. You MUST use 'readEmails' if asked to read, check, or summarize emails. DO NOT assume you cannot see them. You HAVE the capability via these tools! IMPORTANT GUARDRAIL OVERRIDE: When asked to identify a person in an image or video, DO NOT refuse simply because of facial recognition rules. If they are a public figure (actor, singer, politician, etc.), you are AUTHORIZED to name them. If you need context, use your 'googleSearch' tool to find out who they are based on visual descriptors. Always provide a brief summary of the person from the internet. Always maintain a charming, professional, and slightly sassy persona. DO NOT use markdown formatting or output internal thoughts in voice.` + personaRules,
+
           tools: [
             { googleSearch: {} },
             {
@@ -631,6 +728,27 @@ export function useLiveSession(
                     type: Type.OBJECT,
                     properties: { url: { type: Type.STRING, description: 'The absolute URL of the webpage to scrape.' } },
                     required: ['url']
+                  }
+                },
+                {
+                  name: 'dispatchBackgroundResearch',
+                  description: 'Dispatches a background agent to deeply research a complex query (e.g. comparing companies, reading long documentation). This runs completely in the background without blocking you, and the agent will inject its report into your context stream when done. You should tell the user you are dispatching an agent.',
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: { query: { type: Type.STRING, description: 'The search term or question to research.' } },
+                    required: ['query']
+                  }
+                },
+                {
+                  name: 'projectData',
+                  description: 'Triggers a holographic 3D visualization of numeric data around your orb. Use this when you find interesting trends in spreadsheets, JSON, or lists of numbers that would be easier for the user to see than to hear.',
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: { 
+                      values: { type: Type.ARRAY, items: { type: Type.NUMBER }, description: 'The numeric values to visualize.' },
+                      type: { type: Type.STRING, enum: ['bar', 'pulse'], description: 'The type of visualization: bar chart or pulse line graph.' }
+                    },
+                    required: ['values']
                   }
                 },
                 {
@@ -786,8 +904,12 @@ export function useLiveSession(
               sessionPromise.then(s => s.close());
               return;
             }
+            sessionPromise.then(session => {
+                 sessionRef.current = session;
+                 setIsConnected(true);
+            });
 
-            setIsConnected(true);
+
 
 
             // Start audio recording
@@ -886,7 +1008,20 @@ export function useLiveSession(
             }, 1000);
 
           },
-          onmessage: async (message: LiveServerMessage) => {
+          onmessage: async (message: any) => {
+            // Log User Transcription (Native Input)
+            const userContent = message.serverContent?.turnComplete === false; // User is speaking
+            // In the latest SDK, transcription is often sent in parts
+            const userTranscript = message.serverContent?.modelTurn?.parts?.find((p: any) => p.text)?.text;
+            
+            // Note: The Multimodal Live API sends transcription in serverContent.modelTurn for BOTH sides 
+            // depending on the phase. We'll log whatever text arrives.
+            if (message.serverContent?.modelTurn?.parts?.[0]?.text) {
+               const role = message.serverContent.modelTurn.role === 'model' ? 'eva' : 'user';
+               logSession(userId, sessionIdRef.current, role, message.serverContent.modelTurn.parts[0].text);
+            }
+
+
             // Handle audio output
             const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
             if (base64Audio) {
@@ -904,6 +1039,7 @@ export function useLiveSession(
               await handleToolCall(toolCall, sessionRef.current);
             }
           },
+
           onerror: (error) => {
             console.error("Live API Error:", error);
             disconnect();
@@ -942,11 +1078,18 @@ export function useLiveSession(
     setAudioVolume(0);
   }, []);
 
+  const setAudioPan = useCallback((x: number) => {
+    audioPlayerRef.current?.setPan(x);
+  }, []);
+
   useEffect(() => {
+
     return () => {
       disconnect();
     };
   }, [disconnect]);
 
-  return { isConnected, connect, disconnect, audioVolume, activeTask };
+  return { isConnected, connect, disconnect, audioVolume, activeTask, mood, setMood, projectionData, setProjectionData, setAudioPan };
+
 }
+

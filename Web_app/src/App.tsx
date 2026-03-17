@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { SignedIn, SignedOut } from '@clerk/clerk-react';
+import { useAuth } from '@clerk/clerk-react';
 
 // Pages
 import Home from './pages/Home';
@@ -9,6 +9,24 @@ import Pricing from './pages/Pricing';
 import Support from './pages/Support';
 import Downloads from './pages/Downloads';
 import Features from './pages/Features';
+
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isLoaded, isSignedIn } = useAuth();
+
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-yellow-500/20 border-t-yellow-500 animate-spin"></div>
+      </div>
+    );
+  }
+
+  if (!isSignedIn) {
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
+}
 
 export default function App() {
   return (
@@ -25,14 +43,9 @@ export default function App() {
         <Route 
           path="/dashboard" 
           element={
-            <>
-              <SignedIn>
-                <Dashboard />
-              </SignedIn>
-              <SignedOut>
-                <Navigate to="/" replace />
-              </SignedOut>
-            </>
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
           } 
         />
 
@@ -42,3 +55,4 @@ export default function App() {
     </Router>
   );
 }
+

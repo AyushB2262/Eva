@@ -1,7 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Mic, MicOff, Folder, Video, VideoOff, Terminal, MonitorSmartphone, XSquare } from 'lucide-react';
 import { useLiveSession } from '../hooks/useLiveSession';
+import { useFaceTracker } from '../hooks/useFaceTracker';
+import { useGestureTracker } from '../hooks/useGestureTracker';
 import { motion } from 'motion/react';
+
 import { SignedIn, SignedOut, UserButton } from '@clerk/clerk-react';
 import Login from '../components/Login';
 import Avatar3D from '../components/Avatar3D';
@@ -46,9 +49,44 @@ export default function Dashboard() {
     });
   };
 
-  const { isConnected, connect, disconnect, audioVolume, activeTask } = useLiveSession(connectedFiles, screenVideoRef, cameraEnabled, requestGoogleAuth);
+  const liveSession = useLiveSession(connectedFiles, screenVideoRef, cameraEnabled, requestGoogleAuth);
+  const { isConnected, connect, disconnect, audioVolume, activeTask, setAudioPan, mood: liveMood, setMood, projectionData, setProjectionData } = liveSession || {};
+
+
   const [cameraActive, setCameraActive] = useState(false);
   const [screenActive, setScreenActive] = useState(false);
+
+  const faceData = useFaceTracker(videoRef, cameraActive && cameraEnabled);
+  const { position: facePosition, mood: detectedMood } = faceData || { position: null, mood: 'neutral' };
+
+  const gestureData = useGestureTracker(videoRef, cameraActive && cameraEnabled);
+  const { position: handPosition, gesture } = gestureData || { position: null, gesture: 'none' };
+
+
+
+  // Sync mood with live session for empathy
+  useEffect(() => {
+    if (detectedMood && setMood) {
+      setMood(detectedMood);
+    }
+  }, [detectedMood, setMood]);
+
+  // Spatial Audio Integration
+  useEffect(() => {
+    if (facePosition && setAudioPan) {
+      // User moves right (+x) -> Eva is on the left -> Pan left (-x)
+      // Clamp between -1 and 1
+      const panValue = Math.max(-1, Math.min(1, -facePosition.x * 0.8));
+      setAudioPan(panValue);
+    } else if (setAudioPan) {
+      setAudioPan(0);
+    }
+  }, [facePosition, setAudioPan]);
+
+
+
+
+
 
   // Privacy Bug Fix: Physically stop camera tracks when toggled off
   useEffect(() => {
@@ -290,9 +328,25 @@ export default function Dashboard() {
 
           {/* Center Panel: Orb */}
           <div className="flex-1 flex flex-col relative bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-900 via-zinc-950 to-zinc-950 items-center justify-center overflow-hidden">
-            <Avatar3D volume={audioVolume} isConnected={isConnected} />
-            <ActionFeed activeTask={activeTask} />
+            <Avatar3D 
+              volume={audioVolume} 
+              isConnected={isConnected} 
+              facePosition={facePosition} 
+              activeTask={activeTask} 
+              mood={liveMood} 
+              handPosition={handPosition}
+              gesture={gesture}
+              projectionData={projectionData}
+              clearProjection={() => setProjectionData && setProjectionData(null)}
+            />
+
+
           </div>
+
+
+
+
+
         </div>
       </main>
       
