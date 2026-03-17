@@ -1,5 +1,4 @@
 import { openDB } from 'idb';
-import { pipeline } from '@xenova/transformers';
 import { supabase } from './supabase';
 
 const DB_NAME = 'eva-memory';
@@ -10,6 +9,7 @@ let embedPipeline: any = null;
 
 async function getEmbedder() {
     if (!embedPipeline) {
+        const { pipeline } = await import('@xenova/transformers');
         embedPipeline = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
     }
     return embedPipeline;

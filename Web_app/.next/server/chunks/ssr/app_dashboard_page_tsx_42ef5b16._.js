@@ -1,3 +1,0 @@
-module.exports=[20731,a=>{"use strict";var b=a.i(87924);let c=(0,a.i(19721).default)(async()=>{},{loadableGenerated:{modules:[89986]},ssr:!1,loading:()=>(0,b.jsx)("div",{className:"min-h-screen bg-zinc-950 flex items-center justify-center text-zinc-500 font-mono text-sm tracking-widest uppercase",children:"Initializing Neural Core..."})});function d(){return(0,b.jsx)(c,{})}a.s(["default",()=>d])}];
-
-//# sourceMappingURL=app_dashboard_page_tsx_42ef5b16._.js.map
