@@ -373,9 +373,7 @@ function Torus({ args, ...props }: any) {
 
 export default function Avatar3D({ volume, isConnected, facePosition, activeTask, mood, handPosition, gesture, projectionData, clearProjection }: Avatar3DProps) {
 
-  if (projectionData?.values) {
-    console.log(`[3D Avatar] Received projectionData: ${projectionData.values.length} values`);
-  }
+
 
 
 

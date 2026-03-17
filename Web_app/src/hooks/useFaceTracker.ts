@@ -50,6 +50,8 @@ export function useFaceTracker(videoRef: RefObject<HTMLVideoElement | null>, isE
     };
   }, []);
 
+  const lastDetectionTimeRef = useRef<number>(0);
+
   useEffect(() => {
     if (!isEnabled || !isReady || !videoRef.current || !landmarkerRef.current) {
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
@@ -61,9 +63,19 @@ export function useFaceTracker(videoRef: RefObject<HTMLVideoElement | null>, isE
     let lastVideoTime = -1;
 
     const detect = () => {
+      const now = performance.now();
+      
+      // Dynamic Throttling: Check every 41ms (~24fps) for cinematic fluiditiy
+      if (now - lastDetectionTimeRef.current < 41) {
+        requestRef.current = requestAnimationFrame(detect);
+        return;
+      }
+
       if (video.readyState >= 2 && landmarkerRef.current) {
         if (video.currentTime !== lastVideoTime) {
           lastVideoTime = video.currentTime;
+          lastDetectionTimeRef.current = now;
+
           
           try {
             const detections = landmarkerRef.current.detectForVideo(video, performance.now());
