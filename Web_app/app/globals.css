@@ -1,8 +1,13 @@
 @import "tailwindcss";
 
-html, body, #root {
-  background-color: #09090b;
-  color: #f4f4f5;
+:root {
+  --background: #09090b;
+  --foreground: #f4f4f5;
+}
+
+html, body {
+  background-color: var(--background);
+  color: var(--foreground);
   margin: 0;
   padding: 0;
   min-height: 100vh;

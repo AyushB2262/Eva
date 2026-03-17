@@ -1,0 +1,22 @@
+{
+  "[project]/components/DashboardContent.tsx [app-client] (ecmascript, next/dynamic entry)": {
+    "id": "[project]/components/DashboardContent.tsx [app-client] (ecmascript, next/dynamic entry)",
+    "files": [
+      "static/chunks/_98de395d._.js",
+      "static/chunks/_71dd721a._.js",
+      "static/chunks/node_modules_@google_genai_dist_web_index_mjs_2e8a3776._.js",
+      "static/chunks/node_modules_next_dist_bc86a57f._.js",
+      "static/chunks/node_modules_underscore_modules_844e7552._.js",
+      "static/chunks/node_modules_bluebird_js_release_9cdc1937._.js",
+      "static/chunks/node_modules_mammoth_c23b2609._.js",
+      "static/chunks/node_modules_jszip_lib_de8925ba._.js",
+      "static/chunks/node_modules_pako_2138412d._.js",
+      "static/chunks/node_modules_@xmldom_xmldom_lib_f6488e4b._.js",
+      "static/chunks/node_modules_dingbat-to-unicode_dist_4b374a65._.js",
+      "static/chunks/node_modules_xlsx_xlsx_mjs_fef98e92._.js",
+      "static/chunks/node_modules_pdfjs-dist_build_pdf_mjs_3d65fee8._.js",
+      "static/chunks/node_modules_7fa429a5._.js",
+      "static/chunks/components_DashboardContent_tsx_08a3ffba._.js"
+    ]
+  }
+}
