@@ -108,11 +108,24 @@ export class AudioRecorder {
 
 export class AudioPlayer {
   private audioContext: AudioContext;
+  private panner: StereoPannerNode;
   private nextTime: number = 0;
 
   constructor() {
     this.audioContext = new AudioContext({ sampleRate: 24000 });
+    this.panner = this.audioContext.createStereoPanner();
+    this.panner.connect(this.audioContext.destination);
   }
+
+  setPan(x: number) {
+    if (this.panner.pan) {
+      // Smoothly transition pan value
+      this.panner.pan.setTargetAtTime(x, this.audioContext.currentTime, 0.1);
+    } else {
+      this.panner.pan.value = x;
+    }
+  }
+
 
   play(base64: string) {
     if (this.audioContext.state === 'suspended') {
@@ -132,7 +145,8 @@ export class AudioPlayer {
 
     const source = this.audioContext.createBufferSource();
     source.buffer = audioBuffer;
-    source.connect(this.audioContext.destination);
+    source.connect(this.panner);
+
 
     if (this.nextTime < this.audioContext.currentTime) {
       this.nextTime = this.audioContext.currentTime;
@@ -143,9 +157,14 @@ export class AudioPlayer {
 
   stop() {
     this.nextTime = 0;
+    this.panner.disconnect();
     this.audioContext.close();
+    
     this.audioContext = new AudioContext({ sampleRate: 24000 });
+    this.panner = this.audioContext.createStereoPanner();
+    this.panner.connect(this.audioContext.destination);
   }
+
 
   isPlaying(): boolean {
     return this.audioContext.state === 'running' && this.nextTime > this.audioContext.currentTime;
