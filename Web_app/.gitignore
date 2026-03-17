@@ -7,3 +7,7 @@ coverage/
 .env*
 !.env.example
 .env
+.next/
+.vercel/
+out/
+next-env.d.ts

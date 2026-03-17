@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///Users/ayush/Eva/Web_app/components/Providers.tsx"],"sourcesContent":["'use client';\n\nimport React from 'react';\nimport { GoogleOAuthProvider } from '@react-oauth/google';\n\nexport default function Providers({ children }: { children: React.ReactNode }) {\n  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';\n\n  return (\n    <GoogleOAuthProvider clientId={googleClientId}>\n      {children}\n    </GoogleOAuthProvider>\n  );\n}\n"],"names":[],"mappings":";;;;AAMyB;;AAHzB;AAHA;;;AAKe,SAAS,UAAU,EAAE,QAAQ,EAAiC;IAC3E,MAAM,iBAAiB,gHAA4C;IAEnE,qBACE,6LAAC,4LAAmB;QAAC,UAAU;kBAC5B;;;;;;AAGP;KARwB"}}]
-}

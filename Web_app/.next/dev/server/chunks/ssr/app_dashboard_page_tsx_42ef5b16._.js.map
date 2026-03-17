@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///Users/ayush/Eva/Web_app/app/dashboard/page.tsx"],"sourcesContent":["'use client';\n\nimport dynamic from 'next/dynamic';\n\nconst DashboardContent = dynamic(() => import('@/components/DashboardContent'), { \n  ssr: false,\n  loading: () => <div className=\"min-h-screen bg-zinc-950 flex items-center justify-center text-zinc-500 font-mono text-sm tracking-widest uppercase\">Initializing Neural Core...</div>\n});\n\nexport default function DashboardPage() {\n  return <DashboardContent />;\n}\n\n"],"names":[],"mappings":";;;;;AAEA;;AAFA;;;AAIA,MAAM,mBAAmB,IAAA,0KAAO;;;;;;IAC9B,KAAK;IACL,SAAS,kBAAM,8OAAC;YAAI,WAAU;sBAAsH;;;;;;;AAGvI,SAAS;IACtB,qBAAO,8OAAC;;;;;AACV"}}]
-}
