@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 1, "column": 0}, "map": {"version":3,"sources":["turbopack:///[project]/app/globals.css"],"sourcesContent":["@import \"tailwindcss\";\n\nhtml, body, #root {\n  background-color: #09090b;\n  color: #f4f4f5;\n  margin: 0;\n  padding: 0;\n  min-height: 100vh;\n}\n\n\n@layer utilities {\n  .custom-scrollbar::-webkit-scrollbar {\n    width: 4px;\n  }\n  .custom-scrollbar::-webkit-scrollbar-track {\n    background: transparent;\n  }\n  .custom-scrollbar::-webkit-scrollbar-thumb {\n    background: #374045;\n    border-radius: 4px;\n  }\n  .custom-scrollbar::-webkit-scrollbar-thumb:hover {\n    background: #4a555e;\n  }\n}\n"],"names":[],"mappings":"AAEA;;;;;;;;AASA;EACE;;;;EAGA;;;;EAGA;;;;;EAIA"}}]
+}
