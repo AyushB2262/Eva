@@ -6,13 +6,9 @@ const nextConfig: NextConfig = {
   transpilePackages: ['three', '@react-three/fiber', '@react-three/drei'],
   env: {
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
-  },
-  experimental: {
-    // @ts-ignore - turbopack config might not be fully typed in the latest definition
-    turbopack: {
-      root: process.cwd(),
-    },
+    NEXT_PUBLIC_GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   },
 };
+
 
 export default nextConfig;
