@@ -222,7 +222,7 @@ export function useLiveSession(
                       console.log(`[FLOW] USING REST API FALLBACK FOR IMAGE (${ext})`);
                       
                       // Instantiate fallback REST API call
-                      const fallbackAi = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+                      const fallbackAi = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY });
                       const response = await fallbackAi.models.generateContent({
                         model: "gemini-2.5-flash",
                         contents: [{
@@ -257,7 +257,7 @@ export function useLiveSession(
                     if (session) {
                       console.log(`[FLOW] USING REST API FALLBACK FOR AUDIO (${ext})`);
                       
-                      const fallbackAi = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+                      const fallbackAi = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY });
                       const response = await fallbackAi.models.generateContent({
                         model: "gemini-2.5-flash", // We can use flash for audio parsing too under the latest SDK
                         contents: [{
@@ -716,7 +716,7 @@ export function useLiveSession(
 
 
 
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY });
       const sessionPromise = ai.live.connect({
         model: "gemini-2.5-flash-native-audio-preview-09-2025",
         config: {

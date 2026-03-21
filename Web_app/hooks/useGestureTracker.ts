@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, RefObject } from 'react';
+import { getVisionFilesetResolver } from '../utils/mediapipe';
 
 
 export type GestureType = 'none' | 'pinch' | 'swipe_left' | 'swipe_right' | 'point';
@@ -22,16 +23,15 @@ export function useGestureTracker(videoRef: RefObject<HTMLVideoElement | null>, 
     async function init() {
       if (typeof window === 'undefined') return;
       try {
-        const { HandLandmarker, FilesetResolver } = await import('@mediapipe/tasks-vision');
-        const filesetResolver = await FilesetResolver.forVisionTasks(
-          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.x/wasm"
-        );
+        const { HandLandmarker } = await import('@mediapipe/tasks-vision');
+        const filesetResolver = await getVisionFilesetResolver();
+        if (!filesetResolver) return;
         const handLandmarker = await HandLandmarker.createFromOptions(filesetResolver, {
 
 
           baseOptions: {
             modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-            delegate: "GPU"
+            delegate: "CPU"
           },
           runningMode: "VIDEO",
           numHands: 1

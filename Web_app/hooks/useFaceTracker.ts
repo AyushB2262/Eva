@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, RefObject } from 'react';
+import { getVisionFilesetResolver } from '../utils/mediapipe';
 
 
 export function useFaceTracker(videoRef: RefObject<HTMLVideoElement | null>, isEnabled: boolean) {
@@ -17,15 +18,13 @@ export function useFaceTracker(videoRef: RefObject<HTMLVideoElement | null>, isE
     async function init() {
       if (typeof window === 'undefined') return;
       try {
-        const { FaceLandmarker, FilesetResolver } = await import('@mediapipe/tasks-vision');
-        const filesetResolver = await FilesetResolver.forVisionTasks(
-
-          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.x/wasm"
-        );
+        const { FaceLandmarker } = await import('@mediapipe/tasks-vision');
+        const filesetResolver = await getVisionFilesetResolver();
+        if (!filesetResolver) return;
         const faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
           baseOptions: {
             modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task`,
-            delegate: "GPU"
+            delegate: "CPU"
           },
           outputFaceBlendshapes: true,
           runningMode: "VIDEO",
